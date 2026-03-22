@@ -71,10 +71,10 @@ async function syncActivitiesWithExecutions() {
     activity.status = resolvedStatus;
     activity.message = execution.result?.userMessage
       || (resolvedStatus === 'success'
-        ? `${execution.flowName} completed successfully`
+        ? `${execution.flowName} finished successfully`
         : resolvedStatus === 'failed'
-          ? `${execution.flowName} failed`
-          : `${execution.flowName} is still running`);
+          ? `${execution.flowName} needs attention`
+          : `${execution.flowName} is still in progress`);
     activity.details = {
       ...activity.details,
       latestPipeline: execution.latestPipeline
@@ -109,7 +109,7 @@ orbitRouter.get('/status', async (req: Request, res: Response) => {
       const projectId = process.env.GITLAB_PROJECT_ID;
       if (projectId) {
         projectInfo = {
-          name: projectId,
+          name: 'Orbit',
           lastDeployment: new Date().toISOString(),
           environment: 'staging',
           version: 'latest',
@@ -134,7 +134,7 @@ orbitRouter.get('/status', async (req: Request, res: Response) => {
       agents: 'running'
     },
     project: projectInfo || {
-      name: process.env.GITLAB_PROJECT_ID || 'Not configured',
+      name: 'Orbit',
       lastDeployment: activities.find(a => a.type === 'deploy' && a.status === 'success')?.timestamp || 'Never',
       environment: 'staging',
       version: 'v1.0.0',
@@ -177,7 +177,7 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
   // Add activity
   const activity = addActivity(
     'deploy',
-    `Deployment to ${targetEnv} initiated`,
+    `Starting a release check for ${targetEnv}`,
     'running',
     { executionId, environment: targetEnv }
   );
@@ -186,7 +186,7 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
   flowOrchestrator.executeFlow(executionId, 'deploy-flow', {
     environment: targetEnv,
     version: version || 'latest',
-    branch: branch || 'main',
+    branch: branch || gitlabAdapter.getDefaultRef(),
     ...parameters
   }).then(result => {
     // Update activity status
@@ -197,10 +197,10 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
       activities[activityIndex].status = pipelineActive ? 'running' : (result.success ? 'success' : 'failed');
       activities[activityIndex].message = result.userMessage || 
         (pipelineActive
-          ? `Deployment pipeline for ${targetEnv} is still running`
+          ? `The release check for ${targetEnv} is still running`
           : result.success
-            ? `Deployment to ${targetEnv} completed successfully`
-            : 'Deployment failed');
+            ? `The release check for ${targetEnv} finished successfully`
+            : 'The release check needs attention');
       activities[activityIndex].details = {
         ...activities[activityIndex].details,
         latestPipeline: result.latestPipeline
@@ -212,7 +212,7 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
     const activityIndex = activities.findIndex(a => a.id === activity.id);
     if (activityIndex !== -1) {
       activities[activityIndex].status = 'failed';
-      activities[activityIndex].message = `Deployment failed: ${error.message}`;
+      activities[activityIndex].message = `The release check needs attention: ${error.message}`;
     }
     console.error(`[Orbit] Deployment ${executionId} error:`, error);
   });
@@ -220,7 +220,7 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
   const response: DeployResponse = {
     executionId,
     status: FlowStatus.PENDING,
-    message: `Deployment to ${targetEnv} initiated`,
+    message: `Starting a release check for ${targetEnv}`,
     timestamp: new Date().toISOString()
   };
   
@@ -238,14 +238,14 @@ orbitRouter.post('/build', async (req: Request, res: Response) => {
   // Add activity
   const activity = addActivity(
     'build',
-    'Build initiated',
+    'Starting a fresh build',
     'running',
     { executionId }
   );
   
   // Start build asynchronously
   flowOrchestrator.executeFlow(executionId, 'build-flow', {
-    branch: branch || 'main',
+    branch: branch || gitlabAdapter.getDefaultRef(),
     ...parameters
   }).then(result => {
     // Update activity status
@@ -253,14 +253,14 @@ orbitRouter.post('/build', async (req: Request, res: Response) => {
     if (activityIndex !== -1) {
       activities[activityIndex].status = result.success ? 'success' : 'failed';
       activities[activityIndex].message = result.userMessage || 
-        (result.success ? 'Build completed successfully' : 'Build failed');
+        (result.success ? 'Your build finished successfully' : 'Your build needs attention');
     }
     console.log(`[Orbit] Build ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
   }).catch(error => {
     const activityIndex = activities.findIndex(a => a.id === activity.id);
     if (activityIndex !== -1) {
       activities[activityIndex].status = 'failed';
-      activities[activityIndex].message = `Build failed: ${error.message}`;
+      activities[activityIndex].message = `The build needs attention: ${error.message}`;
     }
     console.error(`[Orbit] Build ${executionId} error:`, error);
   });
@@ -268,7 +268,7 @@ orbitRouter.post('/build', async (req: Request, res: Response) => {
   const response: DeployResponse = {
     executionId,
     status: FlowStatus.PENDING,
-    message: 'Build initiated',
+    message: 'Starting a fresh build',
     timestamp: new Date().toISOString()
   };
   
@@ -286,7 +286,7 @@ orbitRouter.post('/fix', async (req: Request, res: Response) => {
   // Add activity
   const activity = addActivity(
     'fix',
-    issue ? `Fixing: ${issue}` : 'Analyzing and fixing issues',
+    issue ? `Working on: ${issue}` : 'Looking into the problem',
     'running',
     { executionId, issue }
   );
@@ -301,14 +301,14 @@ orbitRouter.post('/fix', async (req: Request, res: Response) => {
     if (activityIndex !== -1) {
       activities[activityIndex].status = result.success ? 'success' : 'failed';
       activities[activityIndex].message = result.userMessage || 
-        (result.success ? 'Issues fixed successfully' : 'Fix failed');
+        (result.success ? 'The problem was fixed successfully' : 'The problem still needs attention');
     }
     console.log(`[Orbit] Fix ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
   }).catch(error => {
     const activityIndex = activities.findIndex(a => a.id === activity.id);
     if (activityIndex !== -1) {
       activities[activityIndex].status = 'failed';
-      activities[activityIndex].message = `Fix failed: ${error.message}`;
+      activities[activityIndex].message = `The problem still needs attention: ${error.message}`;
     }
     console.error(`[Orbit] Fix ${executionId} error:`, error);
   });
@@ -316,7 +316,7 @@ orbitRouter.post('/fix', async (req: Request, res: Response) => {
   const response: DeployResponse = {
     executionId,
     status: FlowStatus.PENDING,
-    message: issue ? `Fixing: ${issue}` : 'Analyzing and fixing issues',
+    message: issue ? `Working on: ${issue}` : 'Looking into the problem',
     timestamp: new Date().toISOString()
   };
   
@@ -334,14 +334,12 @@ orbitRouter.post('/test', async (req: Request, res: Response) => {
   // Add activity
   const activity = addActivity(
     'test',
-    scope ? `Running tests: ${scope}` : 'Running all tests',
+    scope ? `Checking your app (${scope})` : 'Checking your app',
     'running',
     { executionId, scope }
   );
   
-  // Start test flow (reuse build flow with test action)
-  flowOrchestrator.executeFlow(executionId, 'build-flow', {
-    action: 'test',
+  flowOrchestrator.executeFlow(executionId, 'test-flow', {
     scope: scope || 'all',
     ...parameters
   }).then(result => {
@@ -349,14 +347,14 @@ orbitRouter.post('/test', async (req: Request, res: Response) => {
     if (activityIndex !== -1) {
       activities[activityIndex].status = result.success ? 'success' : 'failed';
       activities[activityIndex].message = result.userMessage || 
-        (result.success ? 'Tests completed successfully' : 'Tests failed');
+        (result.success ? 'Your app checks finished successfully' : 'Your app checks found a problem');
     }
     console.log(`[Orbit] Tests ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
   }).catch(error => {
     const activityIndex = activities.findIndex(a => a.id === activity.id);
     if (activityIndex !== -1) {
       activities[activityIndex].status = 'failed';
-      activities[activityIndex].message = `Tests failed: ${error.message}`;
+      activities[activityIndex].message = `The app checks found a problem: ${error.message}`;
     }
     console.error(`[Orbit] Tests ${executionId} error:`, error);
   });
@@ -364,7 +362,7 @@ orbitRouter.post('/test', async (req: Request, res: Response) => {
   const response: DeployResponse = {
     executionId,
     status: FlowStatus.PENDING,
-    message: scope ? `Running tests: ${scope}` : 'Running all tests',
+    message: scope ? `Checking your app (${scope})` : 'Checking your app',
     timestamp: new Date().toISOString()
   };
   

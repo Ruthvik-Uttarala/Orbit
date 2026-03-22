@@ -91,10 +91,10 @@ export class CICDAgent extends BaseAgent {
           pipelines: [pipelineSummary],
           stages,
           userMessage: shouldFail
-            ? 'The build encountered an issue. Analyzing the problem...'
+            ? 'I found a problem while checking your app. Taking a closer look now.'
             : finalStatus === 'success'
-              ? 'Build and tests completed successfully!'
-              : `Pipeline finished with status ${finalStatus}`,
+              ? 'Your build and checks finished successfully!'
+              : `The background run finished with status ${finalStatus}`,
           error: finalStatus === 'failed' || finalStatus === 'canceled'
             ? `Pipeline ${pipeline.id} finished with status ${finalStatus}`
             : undefined
@@ -133,8 +133,8 @@ export class CICDAgent extends BaseAgent {
         stage: job.stage
       })),
       userMessage: pipeline.status === 'success'
-        ? 'Pipeline completed successfully'
-        : `Pipeline finished with status ${pipeline.status}`,
+        ? 'The background run finished successfully'
+        : `The background run finished with status ${pipeline.status}`,
       error: pipeline.status === 'failed' || pipeline.status === 'canceled'
         ? `Pipeline ${pipelineId} finished with status ${pipeline.status}`
         : undefined
@@ -154,7 +154,7 @@ export class CICDAgent extends BaseAgent {
       },
       coverage: '87%',
       artifacts: ['build/app.js', 'build/app.css'],
-      userMessage: 'All 24 tests passed with 87% code coverage'
+      userMessage: 'All 24 checks passed, and coverage looks healthy.'
     };
   }
 
@@ -180,7 +180,7 @@ export class CICDAgent extends BaseAgent {
           { test: 'utils.test.ts > should parse input', error: 'TypeError: Cannot read property' },
           { test: 'config.test.ts > should load config', error: 'Config file not found' }
         ],
-        userMessage: '3 tests failed out of 24. The debug agent will analyze the failures.',
+        userMessage: 'I found 3 failing checks out of 24. I’ll investigate the problem.',
         error: '3 tests failed'
       };
     }
@@ -190,7 +190,7 @@ export class CICDAgent extends BaseAgent {
       status: 'passed',
       tests: { total: 24, passed: 24, failed: 0, skipped: 0 },
       coverage: '87%',
-      userMessage: 'All tests passed successfully!'
+      userMessage: 'All checks passed successfully!'
     };
   }
 

@@ -55,7 +55,7 @@ export class DeployAgent extends BaseAgent {
     return {
       validated: true,
       environment,
-      userMessage: `Deployment request for ${environment} looks good.`
+      userMessage: `Everything looks ready for ${environment}.`
     };
   }
 
@@ -68,7 +68,7 @@ export class DeployAgent extends BaseAgent {
     return {
       ready: true,
       environment,
-      userMessage: `${environment} resources are available.`
+      userMessage: `${environment} looks ready.`
     };
   }
 
@@ -81,7 +81,7 @@ export class DeployAgent extends BaseAgent {
     return {
       created: true,
       resource,
-      userMessage: `${resource} created successfully.`
+      userMessage: `${resource} is ready.`
     };
   }
 
@@ -137,7 +137,7 @@ export class DeployAgent extends BaseAgent {
           version,
           latestPipeline: deploymentPipeline,
           pipelines: [deploymentPipeline],
-          userMessage: `Your deployment pipeline is running in GitLab for ${environment}. Open the pipeline card to follow progress.`
+          userMessage: `I'm running the release steps for ${environment} in the background. Open details to follow along.`
         };
       }
 
@@ -161,7 +161,7 @@ export class DeployAgent extends BaseAgent {
       url: `https://${environment === 'production' ? '' : environment + '.'}orbit-app.example.com`,
       latestPipeline: deploymentPipeline,
       pipelines: deploymentPipeline ? [deploymentPipeline] : [],
-      userMessage: `Your app has been deployed to ${environment}! It's now live and ready to use.`
+      userMessage: `The release steps for ${environment} finished successfully.`
     };
   }
 
@@ -187,7 +187,7 @@ export class DeployAgent extends BaseAgent {
         smokeTests: 'passed',
         connectivity: 'passed'
       },
-      userMessage: `Deployment on ${environment} is verified and healthy!`
+      userMessage: `${environment} looks healthy after the release check.`
     };
   }
 
@@ -210,7 +210,7 @@ export class DeployAgent extends BaseAgent {
       rolledBack: true,
       environment,
       restoredVersion: targetVersion,
-      userMessage: `Successfully rolled back ${environment} to the previous version.`
+      userMessage: `Restored the previous working version for ${environment}.`
     };
   }
 
@@ -225,7 +225,7 @@ export class DeployAgent extends BaseAgent {
       environment,
       uptime: '99.9%',
       responseTime: '45ms',
-      userMessage: `${environment} is healthy and running normally.`
+      userMessage: `${environment} is healthy.`
     };
   }
 
@@ -238,7 +238,7 @@ export class DeployAgent extends BaseAgent {
     return {
       updated: true,
       status,
-      userMessage: `Deployment status updated to ${status}.`
+      userMessage: `The release status is now ${status}.`
     };
   }
 
@@ -251,7 +251,7 @@ export class DeployAgent extends BaseAgent {
     return {
       notified: true,
       channels,
-      userMessage: 'Deployment notification sent.'
+      userMessage: 'Everyone has been notified.'
     };
   }
 

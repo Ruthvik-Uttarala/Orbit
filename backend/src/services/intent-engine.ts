@@ -289,22 +289,22 @@ export function getIntentDescription(result: IntentResult): string {
   switch (result.intent) {
     case IntentType.DEPLOY:
       const env = result.parameters.environment || 'staging';
-      return `I'll deploy your app to ${env}. This will build, test, and release your latest changes.`;
+      return `I'll deploy your app to ${env}. I'll run the checks and release steps for you.`;
     case IntentType.BUILD:
-      return `I'll build your app from scratch. This includes generating code, running tests, and preparing it for deployment.`;
+      return `I'll build your app and make sure the basics are in place.`;
     case IntentType.FIX:
-      return `I'll analyze the issue, find the root cause, and apply a fix. Then I'll verify everything works.`;
+      return `I'll analyze the problem, try a fix, and check that everything works again.`;
     case IntentType.UPDATE:
       const feature = result.parameters.feature ? ` to add ${result.parameters.feature}` : '';
-      return `I'll update your app${feature}. This includes making changes, testing, and saving your progress.`;
+      return `I'll update your app${feature}, check the result, and save the changes for you.`;
     case IntentType.TEST:
-      return `I'll run all tests on your app to make sure everything is working correctly.`;
+      return `I'll run a full app check and share the results in plain English.`;
     case IntentType.ROLLBACK:
-      return `I'll revert your app to the previous working version.`;
+      return `I'll bring your app back to the last version that was working well.`;
     case IntentType.STATUS:
-      return `Let me check the current status of your app and recent activity.`;
+      return `Let me check what Orbit is doing right now and how your app is looking.`;
     default:
-      return `I'm not sure what you'd like to do. Try saying something like "Deploy my app" or "Fix the broken build".`;
+      return `I’m not fully sure yet. Try something simple like "Deploy my app" or "Fix the broken build".`;
   }
 }
 

@@ -274,6 +274,59 @@ function App() {
     }
   };
 
+  const getFriendlyStatusLabel = (status: string) => {
+    switch (status) {
+      case 'completed':
+      case 'success':
+      case 'passed':
+        return 'done';
+      case 'running':
+        return 'working';
+      case 'failed':
+        return 'needs attention';
+      case 'pending':
+        return 'waiting';
+      default:
+        return status;
+    }
+  };
+
+  const getFriendlyFlowName = (flowName?: string) => {
+    switch (flowName) {
+      case 'deploy-flow':
+        return 'Release update';
+      case 'build-flow':
+        return 'Build app';
+      case 'debug-flow':
+        return 'Fix problems';
+      case 'test-flow':
+        return 'Check app';
+      case 'multi-agent-flow':
+        return 'Full app update';
+      default:
+        return flowName ? flowName.replace(/-/g, ' ') : 'Background work';
+    }
+  };
+
+  const getFriendlyAgentDescription = (type: string, fallback: string) => {
+    switch (type) {
+      case 'code-agent':
+        return 'Creates and updates app files for you';
+      case 'git-agent':
+        return 'Saves your work and keeps versions organized';
+      case 'cicd-agent':
+        return 'Runs checks in the background';
+      case 'debug-agent':
+        return 'Finds problems and tries safe fixes';
+      case 'deploy-agent':
+        return 'Handles release steps for staging and production';
+      case 'security-agent':
+        return 'Checks for risky changes before release';
+      default:
+        return fallback;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -360,7 +413,7 @@ function App() {
           className={`nav-button ${activeTab === 'dashboard' ? 'active' : ''}`}
           onClick={() => setActiveTab('dashboard')}
         >
-          Dashboard
+          Home
         </button>
         <button 
           className={`nav-button ${activeTab === 'chat' ? 'active' : ''}`}
@@ -372,7 +425,7 @@ function App() {
           className={`nav-button ${activeTab === 'activity' ? 'active' : ''}`}
           onClick={() => setActiveTab('activity')}
         >
-          Activity
+          Updates
         </button>
       </nav>
 
@@ -384,6 +437,7 @@ function App() {
             {/* Quick Actions */}
             <section className="panel quick-actions">
               <h2>What would you like to do?</h2>
+              <p className="panel-helper">Pick one action. Orbit handles the background steps for you.</p>
               <div className="action-buttons">
                 <button 
                   className={`action-btn deploy`}
@@ -430,10 +484,10 @@ function App() {
 
             {/* Project Status */}
             <section className="panel project-status">
-              <h3>Project Status</h3>
+              <h3>Project Overview</h3>
               <div className="status-grid">
                 <div className="status-item">
-                  <span className="status-label">Last Deployment</span>
+                  <span className="status-label">Last release check</span>
                   <span className="status-value">
                     {orbitStatus?.project?.lastDeployment 
                       ? formatTimestamp(orbitStatus.project.lastDeployment)
@@ -453,7 +507,7 @@ function App() {
                   </span>
                 </div>
                 <div className="status-item">
-                  <span className="status-label">Tests</span>
+                  <span className="status-label">Checks</span>
                   <span className="status-value">
                     {orbitStatus?.project?.testsPassed && orbitStatus?.project?.testsTotal
                       ? `${orbitStatus.project.testsPassed}/${orbitStatus.project.testsTotal} Passed`
@@ -465,7 +519,7 @@ function App() {
 
             {/* Active Agents */}
             <section className="panel agents-panel">
-              <h3>Active Agents</h3>
+              <h3>Orbit Helpers</h3>
               <div className="agents-grid">
                 {(orbitStatus?.agents || []).map((agent, i) => (
                   <div key={i} className="agent-card">
@@ -479,10 +533,10 @@ function App() {
                     </div>
                     <div className="agent-info">
                       <span className="agent-name">{agent.name}</span>
-                      <span className="agent-desc">{agent.description}</span>
+                      <span className="agent-desc">{getFriendlyAgentDescription(agent.type, agent.description)}</span>
                     </div>
                     <span className={`agent-status ${agent.status}`}>
-                      {agent.status}
+                      {getFriendlyStatusLabel(agent.status)}
                     </span>
                   </div>
                 ))}
@@ -534,7 +588,7 @@ function App() {
               {messages.length === 0 && (
                 <div className="chat-empty">
                   <p>Hi! I'm Orbit, your AI DevOps assistant.</p>
-                  <p>Tell me what you want to do, like:</p>
+                  <p>Tell me what you want in plain English, like:</p>
                   <div className="suggestion-chips">
                     {suggestions.slice(0, 4).map((suggestion, i) => (
                       <button
@@ -619,21 +673,21 @@ function App() {
             {/* Current Execution */}
             {execution && (
               <section className="panel execution-panel">
-                <h3>Current Operation</h3>
+                <h3>What Orbit Is Doing</h3>
                 <div className="execution-header">
-                  <span className="execution-name">{execution.flowName}</span>
+                  <span className="execution-name">{getFriendlyFlowName(execution.flowName)}</span>
                   <span 
                     className="execution-status"
                     style={{ color: getStatusColor(executionDisplayStatus) }}
                   >
-                    {getStatusIcon(executionDisplayStatus)} {executionDisplayStatus}
+                    {getStatusIcon(executionDisplayStatus)} {getFriendlyStatusLabel(executionDisplayStatus)}
                   </span>
                 </div>
 
                 {pipeline && (
                   <div className="pipeline-card">
                     <div className="pipeline-card-header">
-                      <span className="pipeline-card-title">GitLab pipeline</span>
+                      <span className="pipeline-card-title">Background run</span>
                       <span className={`status-chip ${
                         pipeline.status === 'success'
                           ? 'success'
@@ -643,17 +697,15 @@ function App() {
                               ? 'info'
                               : 'neutral'
                       }`}>
-                        {pipeline.status}
+                        {getFriendlyStatusLabel(pipeline.status)}
                       </span>
                     </div>
                     <div className="pipeline-card-meta">
-                      <span>#{pipeline.id}</span>
-                      <span>{pipeline.source}</span>
-                      <span>{pipeline.ref}</span>
+                      <span>Run #{pipeline.id}</span>
                       {pipeline.environment && <span>{pipeline.environment}</span>}
                     </div>
                     <a className="pipeline-card-link" href={pipeline.url} target="_blank" rel="noreferrer">
-                      Open pipeline
+                      Open detailed progress
                     </a>
                   </div>
                 )}
@@ -680,10 +732,10 @@ function App() {
 
             {/* Activity Log */}
             <section className="panel log-panel">
-              <h3>Activity Log</h3>
+              <h3>Recent Updates</h3>
               <div className="activity-log">
                 {activities.length === 0 && (
-                  <p className="empty-state">No activity yet</p>
+                  <p className="empty-state">Nothing has happened yet</p>
                 )}
                 {activities.map((activity, i) => (
                   <div key={i} className="log-entry">
@@ -693,7 +745,7 @@ function App() {
                     <span className="log-text">
                       {activity.message}
                       <span className={`status-chip ${activity.status}`} style={{ marginLeft: '8px', fontSize: '11px' }}>
-                        {activity.status}
+                        {getFriendlyStatusLabel(activity.status)}
                       </span>
                     </span>
                     <span className="log-time">
@@ -709,7 +761,7 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        <p>Orbit DevOps - AI-Native Deployment Platform</p>
+        <p>Orbit helps you ship changes without wrestling with DevOps tools.</p>
       </footer>
     </div>
   );

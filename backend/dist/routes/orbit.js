@@ -57,10 +57,10 @@ async function syncActivitiesWithExecutions() {
         activity.status = resolvedStatus;
         activity.message = execution.result?.userMessage
             || (resolvedStatus === 'success'
-                ? `${execution.flowName} completed successfully`
+                ? `${execution.flowName} finished successfully`
                 : resolvedStatus === 'failed'
-                    ? `${execution.flowName} failed`
-                    : `${execution.flowName} is still running`);
+                    ? `${execution.flowName} needs attention`
+                    : `${execution.flowName} is still in progress`);
         activity.details = {
             ...activity.details,
             latestPipeline: execution.latestPipeline
@@ -91,7 +91,7 @@ exports.orbitRouter.get('/status', async (req, res) => {
             const projectId = process.env.GITLAB_PROJECT_ID;
             if (projectId) {
                 projectInfo = {
-                    name: projectId,
+                    name: 'Orbit',
                     lastDeployment: new Date().toISOString(),
                     environment: 'staging',
                     version: 'latest',
@@ -115,7 +115,7 @@ exports.orbitRouter.get('/status', async (req, res) => {
             agents: 'running'
         },
         project: projectInfo || {
-            name: process.env.GITLAB_PROJECT_ID || 'Not configured',
+            name: 'Orbit',
             lastDeployment: activities.find(a => a.type === 'deploy' && a.status === 'success')?.timestamp || 'Never',
             environment: 'staging',
             version: 'v1.0.0',
@@ -150,12 +150,12 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
         parameters
     });
     // Add activity
-    const activity = addActivity('deploy', `Deployment to ${targetEnv} initiated`, 'running', { executionId, environment: targetEnv });
+    const activity = addActivity('deploy', `Starting a release check for ${targetEnv}`, 'running', { executionId, environment: targetEnv });
     // Start deployment asynchronously
     orchestrator_1.flowOrchestrator.executeFlow(executionId, 'deploy-flow', {
         environment: targetEnv,
         version: version || 'latest',
-        branch: branch || 'main',
+        branch: branch || gitlab_adapter_1.gitlabAdapter.getDefaultRef(),
         ...parameters
     }).then(result => {
         // Update activity status
@@ -165,10 +165,10 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
             activities[activityIndex].status = pipelineActive ? 'running' : (result.success ? 'success' : 'failed');
             activities[activityIndex].message = result.userMessage ||
                 (pipelineActive
-                    ? `Deployment pipeline for ${targetEnv} is still running`
+                    ? `The release check for ${targetEnv} is still running`
                     : result.success
-                        ? `Deployment to ${targetEnv} completed successfully`
-                        : 'Deployment failed');
+                        ? `The release check for ${targetEnv} finished successfully`
+                        : 'The release check needs attention');
             activities[activityIndex].details = {
                 ...activities[activityIndex].details,
                 latestPipeline: result.latestPipeline
@@ -180,14 +180,14 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
         const activityIndex = activities.findIndex(a => a.id === activity.id);
         if (activityIndex !== -1) {
             activities[activityIndex].status = 'failed';
-            activities[activityIndex].message = `Deployment failed: ${error.message}`;
+            activities[activityIndex].message = `The release check needs attention: ${error.message}`;
         }
         console.error(`[Orbit] Deployment ${executionId} error:`, error);
     });
     const response = {
         executionId,
         status: types_1.FlowStatus.PENDING,
-        message: `Deployment to ${targetEnv} initiated`,
+        message: `Starting a release check for ${targetEnv}`,
         timestamp: new Date().toISOString()
     };
     res.status(202).json(response);
@@ -198,10 +198,10 @@ exports.orbitRouter.post('/build', async (req, res) => {
     const executionId = (0, uuid_1.v4)();
     console.log(`[Orbit] Build requested: ${executionId}`, { branch });
     // Add activity
-    const activity = addActivity('build', 'Build initiated', 'running', { executionId });
+    const activity = addActivity('build', 'Starting a fresh build', 'running', { executionId });
     // Start build asynchronously
     orchestrator_1.flowOrchestrator.executeFlow(executionId, 'build-flow', {
-        branch: branch || 'main',
+        branch: branch || gitlab_adapter_1.gitlabAdapter.getDefaultRef(),
         ...parameters
     }).then(result => {
         // Update activity status
@@ -209,21 +209,21 @@ exports.orbitRouter.post('/build', async (req, res) => {
         if (activityIndex !== -1) {
             activities[activityIndex].status = result.success ? 'success' : 'failed';
             activities[activityIndex].message = result.userMessage ||
-                (result.success ? 'Build completed successfully' : 'Build failed');
+                (result.success ? 'Your build finished successfully' : 'Your build needs attention');
         }
         console.log(`[Orbit] Build ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
     }).catch(error => {
         const activityIndex = activities.findIndex(a => a.id === activity.id);
         if (activityIndex !== -1) {
             activities[activityIndex].status = 'failed';
-            activities[activityIndex].message = `Build failed: ${error.message}`;
+            activities[activityIndex].message = `The build needs attention: ${error.message}`;
         }
         console.error(`[Orbit] Build ${executionId} error:`, error);
     });
     const response = {
         executionId,
         status: types_1.FlowStatus.PENDING,
-        message: 'Build initiated',
+        message: 'Starting a fresh build',
         timestamp: new Date().toISOString()
     };
     res.status(202).json(response);
@@ -234,7 +234,7 @@ exports.orbitRouter.post('/fix', async (req, res) => {
     const executionId = (0, uuid_1.v4)();
     console.log(`[Orbit] Fix requested: ${executionId}`, { issue });
     // Add activity
-    const activity = addActivity('fix', issue ? `Fixing: ${issue}` : 'Analyzing and fixing issues', 'running', { executionId, issue });
+    const activity = addActivity('fix', issue ? `Working on: ${issue}` : 'Looking into the problem', 'running', { executionId, issue });
     // Start debug/fix flow
     orchestrator_1.flowOrchestrator.executeFlow(executionId, 'debug-flow', {
         action: 'fix',
@@ -245,21 +245,21 @@ exports.orbitRouter.post('/fix', async (req, res) => {
         if (activityIndex !== -1) {
             activities[activityIndex].status = result.success ? 'success' : 'failed';
             activities[activityIndex].message = result.userMessage ||
-                (result.success ? 'Issues fixed successfully' : 'Fix failed');
+                (result.success ? 'The problem was fixed successfully' : 'The problem still needs attention');
         }
         console.log(`[Orbit] Fix ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
     }).catch(error => {
         const activityIndex = activities.findIndex(a => a.id === activity.id);
         if (activityIndex !== -1) {
             activities[activityIndex].status = 'failed';
-            activities[activityIndex].message = `Fix failed: ${error.message}`;
+            activities[activityIndex].message = `The problem still needs attention: ${error.message}`;
         }
         console.error(`[Orbit] Fix ${executionId} error:`, error);
     });
     const response = {
         executionId,
         status: types_1.FlowStatus.PENDING,
-        message: issue ? `Fixing: ${issue}` : 'Analyzing and fixing issues',
+        message: issue ? `Working on: ${issue}` : 'Looking into the problem',
         timestamp: new Date().toISOString()
     };
     res.status(202).json(response);
@@ -270,10 +270,8 @@ exports.orbitRouter.post('/test', async (req, res) => {
     const executionId = (0, uuid_1.v4)();
     console.log(`[Orbit] Tests requested: ${executionId}`, { scope });
     // Add activity
-    const activity = addActivity('test', scope ? `Running tests: ${scope}` : 'Running all tests', 'running', { executionId, scope });
-    // Start test flow (reuse build flow with test action)
-    orchestrator_1.flowOrchestrator.executeFlow(executionId, 'build-flow', {
-        action: 'test',
+    const activity = addActivity('test', scope ? `Checking your app (${scope})` : 'Checking your app', 'running', { executionId, scope });
+    orchestrator_1.flowOrchestrator.executeFlow(executionId, 'test-flow', {
         scope: scope || 'all',
         ...parameters
     }).then(result => {
@@ -281,21 +279,21 @@ exports.orbitRouter.post('/test', async (req, res) => {
         if (activityIndex !== -1) {
             activities[activityIndex].status = result.success ? 'success' : 'failed';
             activities[activityIndex].message = result.userMessage ||
-                (result.success ? 'Tests completed successfully' : 'Tests failed');
+                (result.success ? 'Your app checks finished successfully' : 'Your app checks found a problem');
         }
         console.log(`[Orbit] Tests ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
     }).catch(error => {
         const activityIndex = activities.findIndex(a => a.id === activity.id);
         if (activityIndex !== -1) {
             activities[activityIndex].status = 'failed';
-            activities[activityIndex].message = `Tests failed: ${error.message}`;
+            activities[activityIndex].message = `The app checks found a problem: ${error.message}`;
         }
         console.error(`[Orbit] Tests ${executionId} error:`, error);
     });
     const response = {
         executionId,
         status: types_1.FlowStatus.PENDING,
-        message: scope ? `Running tests: ${scope}` : 'Running all tests',
+        message: scope ? `Checking your app (${scope})` : 'Checking your app',
         timestamp: new Date().toISOString()
     };
     res.status(202).json(response);

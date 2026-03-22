@@ -231,6 +231,12 @@ code {
   letter-spacing: -0.01em;
 }
 
+.panel-helper {
+  font-size: 14px;
+  color: var(--orbit-text-secondary);
+  margin-bottom: 18px;
+}
+
 /* Quick Actions */
 .quick-actions {
   text-align: center;
