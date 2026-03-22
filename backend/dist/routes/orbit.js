@@ -36,6 +36,37 @@ function addActivity(type, message, status, details) {
     }
     return activity;
 }
+async function syncActivitiesWithExecutions() {
+    for (const activity of activities) {
+        const executionId = activity.details?.executionId;
+        if (!executionId) {
+            continue;
+        }
+        const execution = await orchestrator_1.flowOrchestrator.getExecution(executionId);
+        if (!execution) {
+            continue;
+        }
+        const pipelineActive = hasActivePipeline(execution.result);
+        const resolvedStatus = pipelineActive
+            ? 'running'
+            : execution.status === types_1.FlowStatus.COMPLETED
+                ? 'success'
+                : execution.status === types_1.FlowStatus.FAILED
+                    ? 'failed'
+                    : 'running';
+        activity.status = resolvedStatus;
+        activity.message = execution.result?.userMessage
+            || (resolvedStatus === 'success'
+                ? `${execution.flowName} completed successfully`
+                : resolvedStatus === 'failed'
+                    ? `${execution.flowName} failed`
+                    : `${execution.flowName} is still running`);
+        activity.details = {
+            ...activity.details,
+            latestPipeline: execution.latestPipeline
+        };
+    }
+}
 // GET /api/orbit/health - System health check
 exports.orbitRouter.get('/health', async (req, res) => {
     const gitlabStatus = gitlab_adapter_1.gitlabAdapter.isConfigured() ? 'connected' : 'disconnected';
@@ -102,6 +133,7 @@ exports.orbitRouter.get('/status', async (req, res) => {
 // GET /api/orbit/activity - Get activity timeline
 exports.orbitRouter.get('/activity', async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+    await syncActivitiesWithExecutions();
     res.json({
         activities: activities.slice(0, limit)
     });
@@ -271,7 +303,7 @@ exports.orbitRouter.post('/test', async (req, res) => {
 // GET /api/orbit/execution/:id - Get execution status
 exports.orbitRouter.get('/execution/:id', async (req, res) => {
     const { id } = req.params;
-    const execution = orchestrator_1.flowOrchestrator.getExecution(id);
+    const execution = await orchestrator_1.flowOrchestrator.getExecution(id);
     if (!execution) {
         res.status(404).json({ error: 'Execution not found' });
         return;

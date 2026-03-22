@@ -1,6 +1,11 @@
 import { FlowExecution, FlowResult } from './types';
 declare class FlowOrchestrator {
     private executions;
+    private isPipelineActive;
+    private upsertPipelineSummary;
+    private finalizeRunningStep;
+    private getPipelineResultMessage;
+    private refreshExecutionPipelineState;
     private hasActivePipeline;
     private createRunningPipelineResult;
     private mergeExecutionOutput;
@@ -75,7 +80,7 @@ declare class FlowOrchestrator {
     /**
      * Get execution by ID
      */
-    getExecution(executionId: string): FlowExecution | undefined;
+    getExecution(executionId: string): Promise<FlowExecution | undefined>;
     /**
      * Get all executions
      */

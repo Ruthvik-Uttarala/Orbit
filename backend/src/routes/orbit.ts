@@ -47,6 +47,41 @@ function addActivity(type: string, message: string, status: 'success' | 'failed'
   return activity;
 }
 
+async function syncActivitiesWithExecutions() {
+  for (const activity of activities) {
+    const executionId = activity.details?.executionId;
+    if (!executionId) {
+      continue;
+    }
+
+    const execution = await flowOrchestrator.getExecution(executionId);
+    if (!execution) {
+      continue;
+    }
+
+    const pipelineActive = hasActivePipeline(execution.result);
+    const resolvedStatus = pipelineActive
+      ? 'running'
+      : execution.status === FlowStatus.COMPLETED
+        ? 'success'
+        : execution.status === FlowStatus.FAILED
+          ? 'failed'
+          : 'running';
+
+    activity.status = resolvedStatus;
+    activity.message = execution.result?.userMessage
+      || (resolvedStatus === 'success'
+        ? `${execution.flowName} completed successfully`
+        : resolvedStatus === 'failed'
+          ? `${execution.flowName} failed`
+          : `${execution.flowName} is still running`);
+    activity.details = {
+      ...activity.details,
+      latestPipeline: execution.latestPipeline
+    };
+  }
+}
+
 // GET /api/orbit/health - System health check
 orbitRouter.get('/health', async (req: Request, res: Response) => {
   const gitlabStatus = gitlabAdapter.isConfigured() ? 'connected' : 'disconnected';
@@ -118,6 +153,7 @@ orbitRouter.get('/status', async (req: Request, res: Response) => {
 // GET /api/orbit/activity - Get activity timeline
 orbitRouter.get('/activity', async (req: Request, res: Response) => {
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+  await syncActivitiesWithExecutions();
   
   res.json({
     activities: activities.slice(0, limit)
@@ -339,7 +375,7 @@ orbitRouter.post('/test', async (req: Request, res: Response) => {
 orbitRouter.get('/execution/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
-  const execution = flowOrchestrator.getExecution(id);
+  const execution = await flowOrchestrator.getExecution(id);
   
   if (!execution) {
     res.status(404).json({ error: 'Execution not found' });

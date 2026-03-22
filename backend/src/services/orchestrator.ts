@@ -14,6 +14,148 @@ import { debugAgent } from '../agents/debug-agent';
 class FlowOrchestrator {
   private executions: Map<string, FlowExecution> = new Map();
 
+  private isPipelineActive(status?: PipelineSummary['status']): boolean {
+    return status === 'created' || status === 'pending' || status === 'running';
+  }
+
+  private upsertPipelineSummary(execution: FlowExecution, pipeline: PipelineSummary): void {
+    const existingPipelines = execution.pipelines || [];
+    const pipelineIndex = existingPipelines.findIndex(existing => existing.id === pipeline.id);
+
+    if (pipelineIndex >= 0) {
+      existingPipelines[pipelineIndex] = {
+        ...existingPipelines[pipelineIndex],
+        ...pipeline
+      };
+    } else {
+      existingPipelines.push(pipeline);
+    }
+
+    execution.pipelines = [...existingPipelines];
+    execution.latestPipeline = pipeline;
+
+    if (execution.result) {
+      execution.result.pipelines = execution.pipelines;
+      execution.result.latestPipeline = pipeline;
+    }
+  }
+
+  private finalizeRunningStep(
+    execution: FlowExecution,
+    status: 'completed' | 'failed',
+    message: string
+  ): void {
+    const runningStep = [...execution.progress].reverse().find(step => step.status === 'running');
+
+    if (!runningStep) {
+      return;
+    }
+
+    runningStep.status = status;
+    runningStep.message = message;
+    runningStep.duration = Date.now() - new Date(runningStep.timestamp).getTime();
+  }
+
+  private getPipelineResultMessage(execution: FlowExecution, status: PipelineSummary['status']): string {
+    const environment = execution.latestPipeline?.environment || execution.result?.output?.environment;
+    const target = environment ? ` for ${environment}` : '';
+
+    if (status === 'success') {
+      return `Your GitLab pipeline finished successfully${target}.`;
+    }
+
+    return `Your GitLab pipeline ${status}${target}. Open the pipeline card for details.`;
+  }
+
+  private async refreshExecutionPipelineState(execution: FlowExecution): Promise<FlowExecution> {
+    if (!execution.latestPipeline || !this.isPipelineActive(execution.latestPipeline.status)) {
+      return execution;
+    }
+
+    try {
+      const pipeline = await gitlabAdapter.getPipelineStatus(execution.latestPipeline.id);
+
+      if (!pipeline) {
+        return execution;
+      }
+
+      const latestPipeline: PipelineSummary = {
+        ...execution.latestPipeline,
+        status: pipeline.status,
+        ref: pipeline.ref,
+        url: pipeline.webUrl,
+        updatedAt: pipeline.updatedAt
+      };
+
+      this.upsertPipelineSummary(execution, latestPipeline);
+
+      if (execution.result?.output) {
+        execution.result.output = {
+          ...execution.result.output,
+          pipelinePending: this.isPipelineActive(latestPipeline.status)
+        };
+      }
+
+      if (this.isPipelineActive(latestPipeline.status)) {
+        execution.status = FlowStatus.RUNNING;
+        execution.result = this.createRunningPipelineResult(execution);
+        return execution;
+      }
+
+      execution.endTime = new Date().toISOString();
+
+      if (latestPipeline.status === 'success') {
+        const userMessage = this.getPipelineResultMessage(execution, latestPipeline.status);
+        execution.status = FlowStatus.COMPLETED;
+        this.finalizeRunningStep(
+          execution,
+          'completed',
+          userMessage
+        );
+        execution.result = {
+          success: true,
+          message: 'GitLab pipeline completed successfully',
+          userMessage,
+          output: {
+            ...(execution.result?.output || {}),
+            pipelinePending: false
+          },
+          latestPipeline: execution.latestPipeline,
+          pipelines: execution.pipelines
+        };
+        return execution;
+      }
+
+      execution.status = FlowStatus.FAILED;
+      execution.error = `GitLab pipeline ${latestPipeline.status}`;
+      const userMessage = this.getPipelineResultMessage(execution, latestPipeline.status);
+      this.finalizeRunningStep(
+        execution,
+        'failed',
+        userMessage
+      );
+      execution.result = {
+        success: false,
+        message: execution.error,
+        userMessage,
+        output: {
+          ...(execution.result?.output || {}),
+          pipelinePending: false
+        },
+        latestPipeline: execution.latestPipeline,
+        pipelines: execution.pipelines
+      };
+    } catch (error) {
+      execution.logs.push(this.createLog(
+        `Failed to refresh pipeline ${execution.latestPipeline.id}: ${(error as Error).message}`,
+        'warn',
+        'cicd-agent'
+      ));
+    }
+
+    return execution;
+  }
+
   private hasActivePipeline(execution: FlowExecution): boolean {
     const latestPipeline = execution.latestPipeline;
     const pipelinePending = execution.result?.output?.pipelinePending;
@@ -607,8 +749,14 @@ class FlowOrchestrator {
   /**
    * Get execution by ID
    */
-  getExecution(executionId: string): FlowExecution | undefined {
-    return this.executions.get(executionId);
+  async getExecution(executionId: string): Promise<FlowExecution | undefined> {
+    const execution = this.executions.get(executionId);
+
+    if (!execution) {
+      return undefined;
+    }
+
+    return this.refreshExecutionPipelineState(execution);
   }
 
   /**

@@ -49,7 +49,7 @@ deployRouter.post('/', async (req: Request, res: Response) => {
 deployRouter.get('/status/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
-  const execution = flowOrchestrator.getExecution(id);
+  const execution = await flowOrchestrator.getExecution(id);
   
   if (!execution) {
     res.status(404).json({ error: 'Deployment not found' });
@@ -79,7 +79,7 @@ deployRouter.get('/status/:id', async (req: Request, res: Response) => {
 deployRouter.post('/cancel/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
-  const execution = flowOrchestrator.getExecution(id);
+  const execution = await flowOrchestrator.getExecution(id);
   
   if (!execution) {
     res.status(404).json({ error: 'Deployment not found' });

@@ -97,9 +97,9 @@ exports.intentRouter.get('/suggestions', (req, res) => {
     res.json({ suggestions: (0, intent_engine_1.getSuggestions)() });
 });
 // Get execution status (for polling from chat)
-exports.intentRouter.get('/execution/:executionId', (req, res) => {
+exports.intentRouter.get('/execution/:executionId', async (req, res) => {
     const { executionId } = req.params;
-    const execution = orchestrator_1.flowOrchestrator.getExecution(executionId);
+    const execution = await orchestrator_1.flowOrchestrator.getExecution(executionId);
     if (!execution) {
         res.status(404).json({ error: 'Execution not found' });
         return;

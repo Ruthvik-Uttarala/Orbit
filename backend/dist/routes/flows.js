@@ -90,9 +90,9 @@ exports.flowsRouter.get('/definitions', (_req, res) => {
     }
 });
 // Get flow status
-exports.flowsRouter.get('/status/:id', (req, res) => {
+exports.flowsRouter.get('/status/:id', async (req, res) => {
     const { id } = req.params;
-    const execution = orchestrator_1.flowOrchestrator.getExecution(id);
+    const execution = await orchestrator_1.flowOrchestrator.getExecution(id);
     if (!execution) {
         res.status(404).json({ error: 'Flow execution not found' });
         return;
@@ -109,9 +109,9 @@ exports.flowsRouter.get('/status/:id', (req, res) => {
     });
 });
 // Get flow logs
-exports.flowsRouter.get('/logs/:id', (req, res) => {
+exports.flowsRouter.get('/logs/:id', async (req, res) => {
     const { id } = req.params;
-    const execution = orchestrator_1.flowOrchestrator.getExecution(id);
+    const execution = await orchestrator_1.flowOrchestrator.getExecution(id);
     if (!execution) {
         res.status(404).json({ error: 'Flow execution not found' });
         return;
