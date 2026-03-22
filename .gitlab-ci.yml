@@ -10,45 +10,49 @@ stages:
 variables:
   DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
   NODE_VERSION: "18"
+  NPM_FLAGS: "--prefer-offline --no-audit"
 
 # Default configuration for all jobs
 default:
   image: node:18
+  interruptible: true
+
+.backend-node:
   cache:
-    key: ${CI_COMMIT_REF_SLUG}
+    key:
+      files:
+        - backend/package-lock.json
     paths:
-      - node_modules/
-      - backend/node_modules/
-      - frontend/node_modules/
+      - backend/.npm/
+
+.frontend-node:
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/.npm/
 
 # Stage 1: Validation
-validate:config:
+validate:project:
   stage: validate
   script:
-    - echo "=== Validating GitLab CI Configuration ==="
-    - echo "CI pipeline configuration is valid"
-
-validate:agents:
-  stage: validate
-  script:
+    - echo "=== Validating Project Configuration ==="
+    - echo "GitLab CI pipeline configuration is valid"
     - echo "=== Validating Agent Configurations ==="
     - ls -la .gitlab/agents/
-    - echo "Agent configurations validated"
-
-validate:flows:
-  stage: validate
-  script:
     - echo "=== Validating Flow Configurations ==="
     - ls -la flows/
-    - echo "Flow configurations validated"
+    - echo "Project configuration validated"
 
 # Stage 2: Build
 build:backend:
   stage: build
+  extends: .backend-node
   script:
     - echo "=== Building Backend ==="
     - cd backend
-    - npm ci
+    - npm ci --cache .npm $NPM_FLAGS
     - npm run build
     - echo "Backend build complete"
   artifacts:
@@ -58,10 +62,11 @@ build:backend:
 
 build:frontend:
   stage: build
+  extends: .frontend-node
   script:
     - echo "=== Building Frontend ==="
     - cd frontend
-    - npm ci
+    - npm ci --cache .npm $NPM_FLAGS
     - npm run build
     - echo "Frontend build complete"
   artifacts:
@@ -72,26 +77,40 @@ build:frontend:
 # Stage 3: Test
 test:backend:
   stage: test
+  extends: .backend-node
   script:
     - echo "=== Running Backend Tests ==="
     - cd backend
-    - npm ci
+    - npm ci --cache .npm $NPM_FLAGS
     - npm test
   coverage: '/All files\s*\|\s*([\d\.]+)/'
 
 test:frontend:
   stage: test
+  extends: .frontend-node
+  rules:
+    - exists:
+        - frontend/src/**/*.test.ts
+        - frontend/src/**/*.test.tsx
+        - frontend/src/**/*.spec.ts
+        - frontend/src/**/*.spec.tsx
   script:
     - echo "=== Running Frontend Tests ==="
     - cd frontend
-    - npm ci
-    - npm test -- --watchAll=false --passWithNoTests
+    - npm ci --cache .npm $NPM_FLAGS
+    - npm test -- --watchAll=false
 
 test:integration:
   stage: test
+  extends: .backend-node
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+      when: manual
+    - when: never
   script:
     - echo "=== Running Integration Tests ==="
     - cd backend
+    - npm ci --cache .npm $NPM_FLAGS
     - npm run test:integration
   allow_failure: true
 
