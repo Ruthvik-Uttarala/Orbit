@@ -1,9 +1,8 @@
 import { GitLabPipeline } from './types';
 export declare class GitLabAdapter {
-    private client;
-    private projectId;
-    private agentName;
-    constructor();
+    private warnedMissingConfig;
+    private getConfig;
+    private getClient;
     isConfigured(): boolean;
     triggerPipeline(ref?: string, variables?: Record<string, string>): Promise<GitLabPipeline | null>;
     getPipelineStatus(pipelineId: number): Promise<GitLabPipeline | null>;

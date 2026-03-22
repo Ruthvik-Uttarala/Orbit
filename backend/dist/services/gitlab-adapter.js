@@ -7,23 +7,37 @@ exports.gitlabAdapter = exports.GitLabAdapter = void 0;
 const axios_1 = __importDefault(require("axios"));
 class GitLabAdapter {
     constructor() {
-        const token = process.env.GITLAB_TOKEN;
+        this.warnedMissingConfig = false;
+    }
+    getConfig() {
+        const token = process.env.GITLAB_TOKEN || '';
         const apiUrl = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
-        this.projectId = process.env.GITLAB_PROJECT_ID || '';
-        this.agentName = process.env.GITLAB_AGENT || 'orbit-deploy-agent';
-        if (!token) {
+        const projectId = process.env.GITLAB_PROJECT_ID || '';
+        const agentName = process.env.GITLAB_AGENT || 'orbit-deploy-agent';
+        if ((!token || !projectId) && !this.warnedMissingConfig) {
             console.warn('GitLab token not configured - running in mock mode');
+            this.warnedMissingConfig = true;
         }
-        this.client = axios_1.default.create({
+        return {
+            token,
+            apiUrl,
+            projectId,
+            agentName
+        };
+    }
+    getClient() {
+        const { apiUrl, token } = this.getConfig();
+        return axios_1.default.create({
             baseURL: apiUrl,
             headers: {
-                'PRIVATE-TOKEN': token || '',
+                'PRIVATE-TOKEN': token,
                 'Content-Type': 'application/json'
             }
         });
     }
     isConfigured() {
-        return !!process.env.GITLAB_TOKEN && !!this.projectId;
+        const { token, projectId } = this.getConfig();
+        return !!token && !!projectId;
     }
     async triggerPipeline(ref = 'main', variables = {}) {
         if (!this.isConfigured()) {
@@ -31,7 +45,8 @@ class GitLabAdapter {
             return this.mockPipeline('pending');
         }
         try {
-            const response = await this.client.post(`/projects/${encodeURIComponent(this.projectId)}/pipeline`, {
+            const { projectId } = this.getConfig();
+            const response = await this.getClient().post(`/projects/${encodeURIComponent(projectId)}/pipeline`, {
                 ref,
                 variables: Object.entries(variables).map(([key, value]) => ({ key, value }))
             });
@@ -54,7 +69,8 @@ class GitLabAdapter {
             return this.mockPipeline('running');
         }
         try {
-            const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/pipelines/${pipelineId}`);
+            const { projectId } = this.getConfig();
+            const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}`);
             return {
                 id: response.data.id,
                 status: response.data.status,
@@ -74,7 +90,8 @@ class GitLabAdapter {
             return [];
         }
         try {
-            const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/pipelines/${pipelineId}/jobs`);
+            const { projectId } = this.getConfig();
+            const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/jobs`);
             return response.data;
         }
         catch (error) {
@@ -87,7 +104,8 @@ class GitLabAdapter {
             return 'Mock job log output';
         }
         try {
-            const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/jobs/${jobId}/trace`);
+            const { projectId } = this.getConfig();
+            const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/trace`);
             return response.data;
         }
         catch (error) {
@@ -146,11 +164,12 @@ class GitLabAdapter {
         }
     }
     mockPipeline(status) {
+        const { projectId } = this.getConfig();
         return {
             id: Math.floor(Math.random() * 10000),
             status,
             ref: 'main',
-            webUrl: `https://gitlab.com/${this.projectId}/-/pipelines/${Math.floor(Math.random() * 10000)}`,
+            webUrl: `https://gitlab.com/${projectId}/-/pipelines/${Math.floor(Math.random() * 10000)}`,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };

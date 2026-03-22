@@ -2,31 +2,47 @@ import axios, { AxiosInstance } from 'axios';
 import { GitLabPipeline } from './types';
 
 export class GitLabAdapter {
-  private client: AxiosInstance;
-  private projectId: string;
-  private agentName: string;
+  private warnedMissingConfig = false;
 
-  constructor() {
-    const token = process.env.GITLAB_TOKEN;
+  private getConfig(): {
+    token: string;
+    apiUrl: string;
+    projectId: string;
+    agentName: string;
+  } {
+    const token = process.env.GITLAB_TOKEN || '';
     const apiUrl = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
-    this.projectId = process.env.GITLAB_PROJECT_ID || '';
-    this.agentName = process.env.GITLAB_AGENT || 'orbit-deploy-agent';
+    const projectId = process.env.GITLAB_PROJECT_ID || '';
+    const agentName = process.env.GITLAB_AGENT || 'orbit-deploy-agent';
 
-    if (!token) {
+    if ((!token || !projectId) && !this.warnedMissingConfig) {
       console.warn('GitLab token not configured - running in mock mode');
+      this.warnedMissingConfig = true;
     }
 
-    this.client = axios.create({
+    return {
+      token,
+      apiUrl,
+      projectId,
+      agentName
+    };
+  }
+
+  private getClient(): AxiosInstance {
+    const { apiUrl, token } = this.getConfig();
+
+    return axios.create({
       baseURL: apiUrl,
       headers: {
-        'PRIVATE-TOKEN': token || '',
+        'PRIVATE-TOKEN': token,
         'Content-Type': 'application/json'
       }
     });
   }
 
   isConfigured(): boolean {
-    return !!process.env.GITLAB_TOKEN && !!this.projectId;
+    const { token, projectId } = this.getConfig();
+    return !!token && !!projectId;
   }
 
   async triggerPipeline(ref: string = 'main', variables: Record<string, string> = {}): Promise<GitLabPipeline | null> {
@@ -36,7 +52,8 @@ export class GitLabAdapter {
     }
 
     try {
-      const response = await this.client.post(`/projects/${encodeURIComponent(this.projectId)}/pipeline`, {
+      const { projectId } = this.getConfig();
+      const response = await this.getClient().post(`/projects/${encodeURIComponent(projectId)}/pipeline`, {
         ref,
         variables: Object.entries(variables).map(([key, value]) => ({ key, value }))
       });
@@ -61,7 +78,8 @@ export class GitLabAdapter {
     }
 
     try {
-      const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/pipelines/${pipelineId}`);
+      const { projectId } = this.getConfig();
+      const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}`);
       
       return {
         id: response.data.id,
@@ -83,7 +101,8 @@ export class GitLabAdapter {
     }
 
     try {
-      const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/pipelines/${pipelineId}/jobs`);
+      const { projectId } = this.getConfig();
+      const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/jobs`);
       return response.data;
     } catch (error) {
       console.error('Failed to get pipeline jobs:', error);
@@ -97,7 +116,8 @@ export class GitLabAdapter {
     }
 
     try {
-      const response = await this.client.get(`/projects/${encodeURIComponent(this.projectId)}/jobs/${jobId}/trace`);
+      const { projectId } = this.getConfig();
+      const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/trace`);
       return response.data;
     } catch (error) {
       console.error('Failed to get job logs:', error);
@@ -175,11 +195,13 @@ export class GitLabAdapter {
   }
 
   private mockPipeline(status: 'pending' | 'running' | 'success' | 'failed' | 'canceled'): GitLabPipeline {
+    const { projectId } = this.getConfig();
+
     return {
       id: Math.floor(Math.random() * 10000),
       status,
       ref: 'main',
-      webUrl: `https://gitlab.com/${this.projectId}/-/pipelines/${Math.floor(Math.random() * 10000)}`,
+      webUrl: `https://gitlab.com/${projectId}/-/pipelines/${Math.floor(Math.random() * 10000)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
