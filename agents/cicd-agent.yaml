@@ -1,0 +1,65 @@
+# CI/CD Agent Definition
+# Agent for pipeline execution and monitoring
+
+name: cicd-agent
+version: v1
+description: Manages CI/CD pipeline execution and monitoring
+
+# Agent capabilities
+capabilities:
+  - trigger-pipeline
+  - monitor-pipeline
+  - fetch-logs
+  - artifacts-management
+
+# Input schema
+input:
+  type: object
+  required:
+    - action
+  properties:
+    action:
+      type: string
+      enum: [trigger, monitor, fetch-logs, get-artifacts]
+    pipeline:
+      type: string
+      description: Pipeline name or ID
+    ref:
+      type: string
+      description: Git reference (branch, tag)
+    variables:
+      type: object
+      description: Pipeline variables
+
+# Output schema
+output:
+  type: object
+  properties:
+    pipelineId:
+      type: number
+    status:
+      type: string
+    url:
+      type: string
+    duration:
+      type: number
+
+# Execution steps
+steps:
+  - name: trigger
+    description: Trigger pipeline
+    timeout: 30s
+
+  - name: monitor
+    description: Monitor pipeline execution
+    timeout: 600s
+
+  - name: fetch-results
+    description: Fetch pipeline results
+    timeout: 30s
+
+# Boundaries
+boundaries:
+  max_concurrent_pipelines: 3
+  max_monitoring_duration: 600s
+  retry_attempts: 2

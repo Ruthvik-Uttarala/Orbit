@@ -1,0 +1,12 @@
+# Debug Agent Configuration
+# Agent for failure analysis and auto-remediation
+
+ci_access:
+  projects:
+    - id: orbit-devops/orbit-project
+
+user_access:
+  access_as:
+    agent: {}
+  projects:
+    - id: orbit-devops/orbit-project

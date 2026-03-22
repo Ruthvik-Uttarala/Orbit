@@ -1,0 +1,65 @@
+# Code Agent Definition
+# Agent for code generation and modification
+
+name: code-agent
+version: v1
+description: Generates and modifies code based on requirements
+
+# Agent capabilities
+capabilities:
+  - generate-code
+  - modify-code
+  - write-tests
+  - create-documentation
+  - validate-code
+
+# Input schema
+input:
+  type: object
+  required:
+    - action
+  properties:
+    action:
+      type: string
+      enum: [generate, modify, write-tests, validate]
+    requirements:
+      type: string
+      description: Code requirements or specifications
+    language:
+      type: string
+      description: Programming language
+    framework:
+      type: string
+      description: Framework to use
+
+# Output schema
+output:
+  type: object
+  properties:
+    generated:
+      type: boolean
+    files:
+      type: array
+      items:
+        type: string
+    message:
+      type: string
+
+# Execution steps
+steps:
+  - name: analyze
+    description: Analyze requirements
+    timeout: 60s
+
+  - name: generate
+    description: Generate code
+    timeout: 300s
+
+  - name: validate
+    description: Validate generated code
+    timeout: 120s
+
+# Boundaries
+boundaries:
+  max_files_per_generation: 50
+  allowed_languages: [typescript, javascript, python, go, rust]

@@ -1,0 +1,92 @@
+# Build Flow Configuration
+# This flow handles building the application from requirements
+
+name: build-flow
+version: v1
+description: Build application from requirements - generates code, runs tests, saves changes
+
+# Flow triggers
+triggers:
+  - type: manual
+    action: build
+  - type: webhook
+    endpoint: /api/flows/build
+
+# Flow stages
+stages:
+  - name: analyze
+    description: Analyze requirements and plan implementation
+    agent: code-agent
+    steps:
+      - name: analyze-requirements
+        action: analyze
+        input: requirements
+        timeout: 60s
+      - name: plan-implementation
+        action: plan
+        output: implementation-plan
+        timeout: 30s
+
+  - name: generate
+    description: Generate application code
+    agent: code-agent
+    depends_on: analyze
+    steps:
+      - name: generate-code
+        action: generate
+        output: source-files
+        timeout: 300s
+      - name: generate-tests
+        action: generate-tests
+        output: test-files
+        timeout: 180s
+
+  - name: validate
+    description: Validate generated code
+    agent: code-agent
+    depends_on: generate
+    steps:
+      - name: validate-syntax
+        action: validate
+        type: syntax
+        timeout: 60s
+      - name: validate-types
+        action: validate
+        type: types
+        timeout: 60s
+      - name: run-unit-tests
+        action: test
+        type: unit
+        timeout: 180s
+
+  - name: save
+    description: Save changes to version control
+    agent: git-agent
+    depends_on: validate
+    steps:
+      - name: create-branch
+        action: create-branch
+        from: main
+        timeout: 60s
+      - name: commit-changes
+        action: commit
+        files: source-files
+        timeout: 120s
+      - name: push-branch
+        action: push
+        timeout: 60s
+
+# Error handling
+error_handling:
+  retry:
+    max_attempts: 2
+    backoff: exponential
+    initial_delay: 30s
+  fallback:
+    - action: notify-failure
+
+# Output
+output:
+  logs: true
+  metrics: true
+  artifacts: true

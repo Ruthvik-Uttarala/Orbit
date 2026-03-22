@@ -1,0 +1,80 @@
+# Orbit Deploy Agent Definition
+# Primary agent for handling deployment operations
+
+name: orbit-deploy-agent
+version: v1
+description: Primary deployment agent that handles application deployment operations
+
+# Agent capabilities
+capabilities:
+  - deploy
+  - validate
+  - verify
+  - rollback
+  - notify
+
+# Input schema
+input:
+  type: object
+  properties:
+    environment:
+      type: string
+      description: Target environment (staging, production)
+      enum: [staging, production]
+    version:
+      type: string
+      description: Version to deploy
+    branch:
+      type: string
+      description: Source branch
+    parameters:
+      type: object
+      description: Additional deployment parameters
+
+# Output schema
+output:
+  type: object
+  properties:
+    deployed:
+      type: boolean
+    environment:
+      type: string
+    version:
+      type: string
+    url:
+      type: string
+
+# Execution steps
+steps:
+  - name: validate
+    description: Validate deployment request
+    timeout: 60s
+
+  - name: prepare
+    description: Prepare deployment environment
+    timeout: 120s
+
+  - name: execute
+    description: Execute deployment
+    timeout: 300s
+
+  - name: verify
+    description: Verify deployment success
+    timeout: 180s
+
+  - name: notify
+    description: Send deployment notifications
+    timeout: 30s
+
+# Error handling
+error_handling:
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  fallback:
+    - action: rollback
+
+# Boundaries
+boundaries:
+  max_deployments_per_hour: 10
+  allowed_environments: [staging, production]

@@ -1,0 +1,96 @@
+# Debug Flow Configuration
+# This flow handles failure analysis and auto-remediation
+
+name: debug-flow
+version: v1
+description: Debug and fix application failures - analyze, identify, fix, verify
+
+# Flow triggers
+triggers:
+  - type: manual
+    action: debug
+  - type: webhook
+    endpoint: /api/flows/debug
+
+# Flow stages
+stages:
+  - name: analyze
+    description: Analyze the failure and gather context
+    agent: debug-agent
+    steps:
+      - name: analyze-failure
+        action: analyze
+        input: failure
+        timeout: 120s
+      - name: gather-context
+        action: gather
+        input: logs
+        timeout: 60s
+
+  - name: identify
+    description: Identify root cause of the failure
+    agent: debug-agent
+    depends_on: analyze
+    steps:
+      - name: identify-root-cause
+        action: identify
+        timeout: 180s
+      - name: suggest-fix
+        action: suggest-fix
+        timeout: 120s
+
+  - name: fix
+    description: Apply the suggested fix
+    agent: debug-agent
+    depends_on: identify
+    steps:
+      - name: apply-fix
+        action: fix
+        timeout: 240s
+      - name: validate-fix
+        action: validate
+        timeout: 60s
+
+  - name: verify
+    description: Verify the fix works
+    agent: cicd-agent
+    depends_on: fix
+    steps:
+      - name: run-tests
+        action: test
+        timeout: 300s
+      - name: check-build
+        action: trigger
+        pipeline: build-test
+        timeout: 180s
+
+  - name: save
+    description: Save the fix to version control
+    agent: git-agent
+    depends_on: verify
+    steps:
+      - name: commit-fix
+        action: commit
+        message: "Fix applied by Debug Agent"
+        timeout: 120s
+
+# Error handling with self-healing
+error_handling:
+  retry:
+    max_attempts: 3
+    backoff: exponential
+    initial_delay: 30s
+  on_failure:
+    - agent: debug-agent
+      action: analyze
+    - agent: debug-agent
+      action: suggest-fix
+    - retry: true
+      max_attempts: 2
+
+# Output
+output:
+  logs: true
+  metrics: true
+  artifacts: true
+  timeline: true

@@ -1,0 +1,106 @@
+# Update Flow Configuration
+# This flow handles feature updates and modifications
+
+name: update-flow
+version: v1
+description: Update application with new features or modifications
+
+# Flow triggers
+triggers:
+  - type: manual
+    action: update
+  - type: webhook
+    endpoint: /api/flows/update
+
+# Flow stages
+stages:
+  - name: prepare
+    description: Prepare for changes
+    agent: git-agent
+    steps:
+      - name: create-feature-branch
+        action: create-branch
+        from: main
+        timeout: 60s
+
+  - name: modify
+    description: Modify code based on requirements
+    agent: code-agent
+    depends_on: prepare
+    steps:
+      - name: analyze-changes
+        action: analyze
+        input: requirements
+        timeout: 120s
+      - name: apply-modifications
+        action: modify
+        output: modified-files
+        timeout: 300s
+
+  - name: test
+    description: Test the modifications
+    agent: cicd-agent
+    depends_on: modify
+    steps:
+      - name: run-unit-tests
+        action: test
+        type: unit
+        timeout: 180s
+      - name: run-integration-tests
+        action: test
+        type: integration
+        timeout: 300s
+
+  - name: security
+    description: Security scan of changes
+    agent: security-agent
+    depends_on: test
+    steps:
+      - name: scan-dependencies
+        action: scan-dependencies
+        timeout: 180s
+      - name: scan-code
+        action: scan-code
+        timeout: 120s
+
+  - name: save
+    description: Save changes to version control
+    agent: git-agent
+    depends_on: security
+    steps:
+      - name: commit-changes
+        action: commit
+        files: modified-files
+        timeout: 120s
+      - name: push-branch
+        action: push
+        timeout: 60s
+
+  - name: deploy (optional)
+    description: Deploy the update (if requested)
+    agent: deploy-agent
+    depends_on: save
+    condition: include-deployment
+    steps:
+      - name: deploy-staging
+        action: deploy
+        environment: staging
+        timeout: 300s
+      - name: verify-deployment
+        action: verify
+        timeout: 120s
+
+# Error handling
+error_handling:
+  retry:
+    max_attempts: 2
+    backoff: exponential
+    initial_delay: 30s
+  fallback:
+    - action: rollback-changes
+
+# Output
+output:
+  logs: true
+  metrics: true
+  artifacts: true

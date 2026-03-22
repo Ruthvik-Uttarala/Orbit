@@ -1,0 +1,74 @@
+# Debug Agent Definition
+# Agent for failure analysis and auto-remediation
+
+name: debug-agent
+version: v1
+description: Analyzes failures and suggests fixes
+
+# Agent capabilities
+capabilities:
+  - analyze-logs
+  - identify-issues
+  - suggest-fixes
+  - auto-remediation
+
+# Input schema
+input:
+  type: object
+  required:
+    - action
+  properties:
+    action:
+      type: string
+      enum: [analyze, identify, suggest-fix, remediate]
+    failureType:
+      type: string
+      description: Type of failure
+    logs:
+      type: string
+      description: Error logs to analyze
+    context:
+      type: object
+      description: Additional context
+
+# Output schema
+output:
+  type: object
+  properties:
+    analysis:
+      type: string
+    rootCause:
+      type: string
+    fix:
+      type: string
+    rerun:
+      type: boolean
+
+# Execution steps
+steps:
+  - name: analyze
+    description: Analyze failure logs
+    timeout: 60s
+
+  - name: identify
+    description: Identify root cause
+    timeout: 120s
+
+  - name: fix
+    description: Generate fix
+    timeout: 180s
+
+  - name: retry
+    description: Retry with fix
+    timeout: 300s
+
+# Error handling
+error_handling:
+  retry:
+    max_attempts: 2
+    backoff: linear
+
+# Boundaries
+boundaries:
+  max_fix_attempts: 3
+  max_analysis_duration: 120s

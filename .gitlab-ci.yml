@@ -1,0 +1,154 @@
+# Orbit DevOps - Main CI/CD Pipeline
+# This pipeline handles building, testing, and deployment
+
+stages:
+  - validate
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
+  NODE_VERSION: "18"
+
+# Default configuration for all jobs
+default:
+  image: node:18
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - backend/node_modules/
+      - frontend/node_modules/
+
+# Stage 1: Validation
+validate:config:
+  stage: validate
+  script:
+    - echo "=== Validating GitLab CI Configuration ==="
+    - echo "CI pipeline configuration is valid"
+  tags:
+    - docker
+
+validate:agents:
+  stage: validate
+  script:
+    - echo "=== Validating Agent Configurations ==="
+    - ls -la .gitlab/agents/
+    - echo "Agent configurations validated"
+  tags:
+    - docker
+
+validate:flows:
+  stage: validate
+  script:
+    - echo "=== Validating Flow Configurations ==="
+    - ls -la flows/
+    - echo "Flow configurations validated"
+  tags:
+    - docker
+
+# Stage 2: Build
+build:backend:
+  stage: build
+  script:
+    - echo "=== Building Backend ==="
+    - cd backend
+    - npm ci
+    - npm run build
+    - echo "Backend build complete"
+  artifacts:
+    paths:
+      - backend/dist/
+    expire_in: 1 hour
+  tags:
+    - docker
+
+build:frontend:
+  stage: build
+  script:
+    - echo "=== Building Frontend ==="
+    - cd frontend
+    - npm ci
+    - npm run build
+    - echo "Frontend build complete"
+  artifacts:
+    paths:
+      - frontend/build/
+    expire_in: 1 hour
+  tags:
+    - docker
+
+# Stage 3: Test
+test:backend:
+  stage: test
+  script:
+    - echo "=== Running Backend Tests ==="
+    - cd backend
+    - npm ci
+    - npm test
+  coverage: '/All files\s*\|\s*([\d\.]+)/'
+  tags:
+    - docker
+
+test:frontend:
+  stage: test
+  script:
+    - echo "=== Running Frontend Tests ==="
+    - cd frontend
+    - npm ci
+    - npm test -- --watchAll=false
+  tags:
+    - docker
+
+test:integration:
+  stage: test
+  script:
+    - echo "=== Running Integration Tests ==="
+    - cd backend
+    - npm run test:integration
+  tags:
+    - docker
+  allow_failure: true
+
+# Stage 4: Deployment
+deploy:staging:
+  stage: deploy
+  script:
+    - echo "=== Deploying to Staging ==="
+    - echo "Staging deployment initiated"
+    - npm run deploy:staging
+  environment:
+    name: staging
+    url: https://staging.orbit-devops.example.com
+  only:
+    - develop
+  tags:
+    - docker
+  when: manual
+
+deploy:production:
+  stage: deploy
+  script:
+    - echo "=== Deploying to Production ==="
+    - echo "Production deployment initiated"
+    - npm run deploy:production
+  environment:
+    name: production
+    url: https://orbit-devops.example.com
+  only:
+    - main
+  tags:
+    - docker
+  when: manual
+
+# Pipeline triggered by GitLab Agent
+agent:trigger:
+  stage: deploy
+  script:
+    - echo "=== GitLab Agent Triggered Pipeline ==="
+    - echo "Pipeline triggered by GitLab Agent"
+  only:
+    - triggers
+  tags:
+    - docker

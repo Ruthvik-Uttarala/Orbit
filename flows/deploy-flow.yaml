@@ -1,0 +1,95 @@
+# Deploy Flow Configuration
+# This flow handles the standard deployment workflow
+
+name: deploy-flow
+version: v1
+description: Standard deployment flow for Orbit DevOps
+
+# Flow triggers
+triggers:
+  - type: manual
+    action: deploy
+  - type: webhook
+    endpoint: /api/flows/deploy
+  - type: pipeline
+    project: orbit-devops
+    ref: main
+
+# Flow stages
+stages:
+  - name: validate
+    description: Validate deployment request
+    agent: deploy-agent
+    steps:
+      - name: validate-input
+        action: validate
+        input:
+          - deployment-target
+          - version
+        timeout: 60s
+
+  - name: prepare
+    description: Prepare deployment environment
+    agent: deploy-agent
+    steps:
+      - name: check-resources
+        action: check
+        timeout: 120s
+      - name: create-namespace
+        action: create
+        resource: namespace
+        timeout: 60s
+
+  - name: deploy
+    description: Execute deployment
+    agent: deploy-agent
+    steps:
+      - name: apply-manifests
+        action: apply
+        path: manifests/
+        timeout: 300s
+      - name: verify-deployment
+        action: verify
+        timeout: 180s
+
+  - name: test
+    description: Run deployment tests
+    agent: cicd-agent
+    steps:
+      - name: smoke-tests
+        action: test
+        type: smoke
+        timeout: 120s
+      - name: integration-tests
+        action: test
+        type: integration
+        timeout: 300s
+
+  - name: complete
+    description: Finalize deployment
+    agent: deploy-agent
+    steps:
+      - name: update-status
+        action: update
+        status: deployed
+      - name: notify
+        action: notify
+        channels:
+          - slack
+          - email
+
+# Error handling
+error_handling:
+  retry:
+    max_attempts: 3
+    backoff: exponential
+    initial_delay: 30s
+  fallback:
+    - action: rollback
+    - action: notify
+
+# Output
+output:
+  logs: true
+  metrics: true
+  artifacts: true

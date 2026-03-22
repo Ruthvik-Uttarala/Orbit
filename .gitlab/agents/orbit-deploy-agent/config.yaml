@@ -1,0 +1,29 @@
+# Orbit Deploy Agent Configuration
+# GitLab Agent for deployment operations
+
+gitops:
+  # Manifest projects for GitOps
+  manifest_projects:
+    - id: orbit-devops/orbit-project
+      paths:
+        - glob: 'manifests/**/*.{yaml,yml}'
+
+ci_access:
+  # Allow CI/CD jobs to access the agent
+  projects:
+    - id: orbit-devops/orbit-project
+    - id: orbit-devops/frontend
+    - id: orbit-devops/backend
+  groups:
+    - id: orbit-devops/deployers
+
+# Resource management
+resources:
+  namespace: orbit-deploy
+
+# User access
+user_access:
+  access_as:
+    agent: {}
+  projects:
+    - id: orbit-devops/orbit-project

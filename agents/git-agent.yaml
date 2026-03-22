@@ -1,0 +1,74 @@
+# Git Agent Definition
+# Agent for version control operations
+
+name: git-agent
+version: v1
+description: Handles all version control operations including commits, branches, and merges
+
+# Agent capabilities
+capabilities:
+  - create-branch
+  - commit-changes
+  - merge-branch
+  - create-pull-request
+  - resolve-conflicts
+
+# Input schema
+input:
+  type: object
+  required:
+    - action
+  properties:
+    action:
+      type: string
+      enum: [create-branch, commit, merge, create-pr, resolve-conflicts]
+    branch:
+      type: string
+      description: Branch name
+    base:
+      type: string
+      description: Base branch for PR/merge
+    files:
+      type: array
+      items:
+        type: string
+      description: Files to commit
+    message:
+      type: string
+      description: Commit message
+
+# Output schema
+output:
+  type: object
+  properties:
+    branch:
+      type: string
+    commit:
+      type: string
+    mergeRequestId:
+      type: number
+    message:
+      type: string
+
+# Execution steps
+steps:
+  - name: create-branch
+    description: Create new branch
+    timeout: 30s
+
+  - name: commit
+    description: Commit changes
+    timeout: 60s
+
+  - name: push
+    description: Push to remote
+    timeout: 60s
+
+  - name: merge-request
+    description: Create merge request
+    timeout: 30s
+
+# Boundaries
+boundaries:
+  max_branches_per_operation: 5
+  max_commits_per_push: 100

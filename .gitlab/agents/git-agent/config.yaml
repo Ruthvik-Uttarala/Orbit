@@ -1,0 +1,12 @@
+# Git Agent Configuration
+# Agent for version control operations
+
+ci_access:
+  projects:
+    - id: orbit-devops/orbit-project
+
+user_access:
+  access_as:
+    agent: {}
+  projects:
+    - id: orbit-devops/orbit-project
