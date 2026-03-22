@@ -28,7 +28,7 @@ class CICDAgent extends base_agent_1.BaseAgent {
         }
     }
     async triggerPipeline(input, execution) {
-        const ref = input.branch || 'main';
+        const ref = input.branch || gitlab_adapter_1.gitlabAdapter.getDefaultRef();
         const variables = input.variables || {};
         this.log(execution, 'info', 'Starting build and test pipeline...');
         await this.work(300);

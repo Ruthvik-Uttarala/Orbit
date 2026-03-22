@@ -15,10 +15,22 @@ class DeployAgent extends base_agent_1.BaseAgent {
     async run(input, execution) {
         const action = input.action || 'deploy';
         switch (action) {
+            case 'validate':
+                return this.validateRequest(input, execution);
+            case 'check':
+                return this.checkResources(input, execution);
+            case 'create':
+                return this.createResource(input, execution);
+            case 'apply':
+                return this.deploy(input, execution);
             case 'deploy':
                 return this.deploy(input, execution);
             case 'verify':
                 return this.verifyDeployment(input, execution);
+            case 'update':
+                return this.updateStatus(input, execution);
+            case 'notify':
+                return this.notify(input, execution);
             case 'rollback':
                 return this.rollback(input, execution);
             case 'health-check':
@@ -26,6 +38,36 @@ class DeployAgent extends base_agent_1.BaseAgent {
             default:
                 return this.deploy(input, execution);
         }
+    }
+    async validateRequest(input, execution) {
+        const environment = input.environment || 'staging';
+        this.log(execution, 'info', `Validating deployment request for ${environment}...`);
+        await this.work(250);
+        return {
+            validated: true,
+            environment,
+            userMessage: `Deployment request for ${environment} looks good.`
+        };
+    }
+    async checkResources(input, execution) {
+        const environment = input.environment || 'staging';
+        this.log(execution, 'info', `Checking ${environment} resources...`);
+        await this.work(350);
+        return {
+            ready: true,
+            environment,
+            userMessage: `${environment} resources are available.`
+        };
+    }
+    async createResource(input, execution) {
+        const resource = input.resource || 'resource';
+        this.log(execution, 'info', `Creating ${resource}...`);
+        await this.work(350);
+        return {
+            created: true,
+            resource,
+            userMessage: `${resource} created successfully.`
+        };
     }
     async deploy(input, execution) {
         const environment = input.environment || 'staging';
@@ -36,8 +78,9 @@ class DeployAgent extends base_agent_1.BaseAgent {
         await this.work(600);
         this.log(execution, 'info', 'Triggering deployment pipeline...');
         let deploymentPipeline;
+        let livePipeline;
         try {
-            const pipeline = await gitlab_adapter_1.gitlabAdapter.triggerPipeline('main', {
+            const pipeline = await gitlab_adapter_1.gitlabAdapter.triggerPipeline(gitlab_adapter_1.gitlabAdapter.getDefaultRef(), {
                 DEPLOY_ENV: environment,
                 VERSION: version,
                 DEPLOY_ACTION: 'deploy'
@@ -46,6 +89,7 @@ class DeployAgent extends base_agent_1.BaseAgent {
                 this.log(execution, 'info', `Deployment pipeline started (ID: ${pipeline.id})`);
                 const finalPipeline = await gitlab_adapter_1.gitlabAdapter.monitorPipeline(pipeline.id, {
                     onProgress: current => {
+                        livePipeline = current;
                         this.log(execution, 'info', `Deployment pipeline status: ${current.status}`);
                     }
                 });
@@ -56,7 +100,21 @@ class DeployAgent extends base_agent_1.BaseAgent {
             }
         }
         catch (error) {
-            this.log(execution, 'warn', `GitLab pipeline trigger: ${error.message}. Using local deployment path.`);
+            const errorMessage = error.message;
+            if (errorMessage.includes('Timed out waiting for pipeline') && livePipeline) {
+                deploymentPipeline = this.toPipelineSummary(livePipeline, environment);
+                this.log(execution, 'warn', `Deployment pipeline is still running in GitLab (ID: ${livePipeline.id}).`);
+                return {
+                    deployed: false,
+                    pipelinePending: true,
+                    environment,
+                    version,
+                    latestPipeline: deploymentPipeline,
+                    pipelines: [deploymentPipeline],
+                    userMessage: `Your deployment pipeline is running in GitLab for ${environment}. Open the pipeline card to follow progress.`
+                };
+            }
+            this.log(execution, 'warn', `GitLab pipeline trigger: ${errorMessage}. Using local deployment path.`);
         }
         await this.work(1000);
         this.log(execution, 'info', `Deploying to ${environment} environment...`);
@@ -122,6 +180,26 @@ class DeployAgent extends base_agent_1.BaseAgent {
             uptime: '99.9%',
             responseTime: '45ms',
             userMessage: `${environment} is healthy and running normally.`
+        };
+    }
+    async updateStatus(input, execution) {
+        const status = input.status || 'deployed';
+        this.log(execution, 'info', `Updating deployment status to ${status}...`);
+        await this.work(250);
+        return {
+            updated: true,
+            status,
+            userMessage: `Deployment status updated to ${status}.`
+        };
+    }
+    async notify(input, execution) {
+        const channels = input.channels || ['ui'];
+        this.log(execution, 'info', `Sending deployment notifications to ${channels.join(', ')}...`);
+        await this.work(250);
+        return {
+            notified: true,
+            channels,
+            userMessage: 'Deployment notification sent.'
         };
     }
     toPipelineSummary(pipeline, environment) {

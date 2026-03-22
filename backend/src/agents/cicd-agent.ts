@@ -35,7 +35,7 @@ export class CICDAgent extends BaseAgent {
   }
 
   private async triggerPipeline(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
-    const ref = input.branch || 'main';
+    const ref = input.branch || gitlabAdapter.getDefaultRef();
     const variables = input.variables || {};
 
     this.log(execution, 'info', 'Starting build and test pipeline...');

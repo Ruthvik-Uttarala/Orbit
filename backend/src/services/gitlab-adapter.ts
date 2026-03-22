@@ -9,11 +9,13 @@ export class GitLabAdapter {
     apiUrl: string;
     projectId: string;
     agentName: string;
+    ref: string;
   } {
     const token = process.env.GITLAB_TOKEN || '';
     const apiUrl = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
     const projectId = process.env.GITLAB_PROJECT_ID || '';
     const agentName = process.env.GITLAB_AGENT || 'orbit-deploy-agent';
+    const ref = process.env.GITLAB_REF || 'main';
 
     if ((!token || !projectId) && !this.warnedMissingConfig) {
       console.warn('GitLab token not configured - running in mock mode');
@@ -24,8 +26,13 @@ export class GitLabAdapter {
       token,
       apiUrl,
       projectId,
-      agentName
+      agentName,
+      ref
     };
+  }
+
+  getDefaultRef(): string {
+    return this.getConfig().ref;
   }
 
   private getClient(): AxiosInstance {
@@ -45,7 +52,7 @@ export class GitLabAdapter {
     return !!token && !!projectId;
   }
 
-  async triggerPipeline(ref: string = 'main', variables: Record<string, string> = {}): Promise<GitLabPipeline | null> {
+  async triggerPipeline(ref: string = this.getDefaultRef(), variables: Record<string, string> = {}): Promise<GitLabPipeline | null> {
     if (!this.isConfigured()) {
       // Return mock response in development
       return this.mockPipeline('pending');
@@ -53,10 +60,14 @@ export class GitLabAdapter {
 
     try {
       const { projectId } = this.getConfig();
-      const response = await this.getClient().post(`/projects/${encodeURIComponent(projectId)}/pipeline`, {
-        ref,
-        variables: Object.entries(variables).map(([key, value]) => ({ key, value }))
-      });
+      const payload: Record<string, unknown> = { ref };
+      const pipelineVariables = Object.entries(variables).map(([key, value]) => ({ key, value }));
+
+      if (pipelineVariables.length > 0) {
+        payload.variables = pipelineVariables;
+      }
+
+      const response = await this.createPipelineRequest(projectId, payload, ref);
 
       return {
         id: response.data.id,
@@ -67,7 +78,7 @@ export class GitLabAdapter {
         updatedAt: response.data.updated_at
       };
     } catch (error) {
-      console.error('Failed to trigger pipeline:', error);
+      console.error(`Failed to trigger pipeline: ${this.describeError(error)}`);
       throw error;
     }
   }
@@ -90,7 +101,7 @@ export class GitLabAdapter {
         updatedAt: response.data.updated_at
       };
     } catch (error) {
-      console.error('Failed to get pipeline status:', error);
+      console.error(`Failed to get pipeline status: ${this.describeError(error)}`);
       throw error;
     }
   }
@@ -105,7 +116,7 @@ export class GitLabAdapter {
       const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/jobs`);
       return response.data;
     } catch (error) {
-      console.error('Failed to get pipeline jobs:', error);
+      console.error(`Failed to get pipeline jobs: ${this.describeError(error)}`);
       throw error;
     }
   }
@@ -120,7 +131,7 @@ export class GitLabAdapter {
       const response = await this.getClient().get(`/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/trace`);
       return response.data;
     } catch (error) {
-      console.error('Failed to get job logs:', error);
+      console.error(`Failed to get job logs: ${this.describeError(error)}`);
       throw error;
     }
   }
@@ -137,7 +148,7 @@ export class GitLabAdapter {
     }
 
     // Trigger via CI/CD pipeline as fallback
-    return this.triggerPipeline('main', {
+    return this.triggerPipeline(this.getDefaultRef(), {
       FLOW_NAME: flowName,
       ...parameters
     });
@@ -195,16 +206,61 @@ export class GitLabAdapter {
   }
 
   private mockPipeline(status: 'pending' | 'running' | 'success' | 'failed' | 'canceled'): GitLabPipeline {
-    const { projectId } = this.getConfig();
+    const { projectId, ref } = this.getConfig();
 
     return {
       id: Math.floor(Math.random() * 10000),
       status,
-      ref: 'main',
+      ref,
       webUrl: `https://gitlab.com/${projectId}/-/pipelines/${Math.floor(Math.random() * 10000)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+  }
+
+  private async createPipelineRequest(
+    projectId: string,
+    payload: Record<string, unknown>,
+    ref: string
+  ) {
+    try {
+      return await this.getClient().post(`/projects/${encodeURIComponent(projectId)}/pipeline`, payload);
+    } catch (error) {
+      if (this.shouldRetryWithoutVariables(error, payload.variables)) {
+        return this.getClient().post(`/projects/${encodeURIComponent(projectId)}/pipeline`, { ref });
+      }
+
+      throw error;
+    }
+  }
+
+  private shouldRetryWithoutVariables(error: unknown, variables: unknown): boolean {
+    if (!variables || !Array.isArray(variables) || variables.length === 0 || !axios.isAxiosError(error)) {
+      return false;
+    }
+
+    const baseMessages = error.response?.data?.message?.base;
+    return Array.isArray(baseMessages)
+      && baseMessages.some((message: string) => message.includes('Insufficient permissions to set pipeline variables'));
+  }
+
+  private describeError(error: unknown): string {
+    if (!axios.isAxiosError(error)) {
+      return error instanceof Error ? error.message : 'Unknown error';
+    }
+
+    const status = error.response?.status;
+    const data = error.response?.data;
+
+    if (data?.message?.base && Array.isArray(data.message.base)) {
+      return `${status ?? 'unknown'} ${data.message.base.join(', ')}`;
+    }
+
+    if (typeof data?.message === 'string') {
+      return `${status ?? 'unknown'} ${data.message}`;
+    }
+
+    return error.message;
   }
 }
 
