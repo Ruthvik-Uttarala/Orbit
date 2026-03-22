@@ -88,17 +88,11 @@ test:backend:
 test:frontend:
   stage: test
   extends: .frontend-node
-  rules:
-    - exists:
-        - frontend/src/**/*.test.ts
-        - frontend/src/**/*.test.tsx
-        - frontend/src/**/*.spec.ts
-        - frontend/src/**/*.spec.tsx
   script:
     - echo "=== Running Frontend Tests ==="
     - cd frontend
     - npm ci --cache .npm $NPM_FLAGS
-    - npm test -- --watchAll=false
+    - npm test -- --watchAll=false --passWithNoTests
 
 test:integration:
   stage: test
