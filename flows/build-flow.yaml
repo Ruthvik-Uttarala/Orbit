@@ -14,9 +14,19 @@ triggers:
 
 # Flow stages
 stages:
+  - name: prepare
+    description: Create a safe workspace before changing code
+    agent: git-agent
+    steps:
+      - name: create-feature-branch
+        action: create-branch
+        from: main
+        timeout: 60s
+
   - name: analyze
     description: Analyze requirements and plan implementation
     agent: code-agent
+    depends_on: prepare
     steps:
       - name: analyze-requirements
         action: analyze
@@ -64,10 +74,6 @@ stages:
     agent: git-agent
     depends_on: validate
     steps:
-      - name: create-branch
-        action: create-branch
-        from: main
-        timeout: 60s
       - name: commit-changes
         action: commit
         files: source-files

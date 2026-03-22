@@ -108,6 +108,10 @@ function normalizeInput(input) {
         .replace(/[^\w\s]/g, '') // Remove punctuation
         .replace(/\s+/g, ' '); // Normalize whitespace
 }
+function looksLikeGreeting(input) {
+    const normalized = normalizeInput(input);
+    return ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'].includes(normalized);
+}
 /**
  * Extract parameters from the input based on intent
  */
@@ -272,6 +276,9 @@ function getIntentDescription(result) {
         case types_1.IntentType.STATUS:
             return `Let me check what Orbit is doing right now and how your app is looking.`;
         default:
+            if (looksLikeGreeting(result.rawInput)) {
+                return `Hi! I can help you deploy your app, run tests, fix a broken build, or check the current status.`;
+            }
             return `I’m not fully sure yet. Try something simple like "Deploy my app" or "Fix the broken build".`;
     }
 }

@@ -88,6 +88,11 @@ export class GitAgent extends BaseAgent {
     return result.stdout || 'HEAD';
   }
 
+  private async hasUncommittedChanges(): Promise<boolean> {
+    const result = await this.runGit(['status', '--porcelain']);
+    return result.stdout.length > 0;
+  }
+
   private async getRemotes(): Promise<string[]> {
     const result = await this.runGit(['remote']);
     return result.stdout ? result.stdout.split('\n').filter(Boolean) : [];
@@ -188,8 +193,15 @@ export class GitAgent extends BaseAgent {
       await this.runGit(['switch', branchName]);
       this.log(execution, 'info', `Switched to existing branch ${branchName}`);
     } else {
-      await this.runGit(['switch', '-c', branchName, from]);
-      this.log(execution, 'info', `New branch created: ${branchName} from ${from}`);
+      const dirtyWorkingTree = await this.hasUncommittedChanges();
+
+      if (dirtyWorkingTree) {
+        await this.runGit(['switch', '-c', branchName]);
+        this.log(execution, 'info', `New branch created from your current workspace: ${branchName}`);
+      } else {
+        await this.runGit(['switch', '-c', branchName, from]);
+        this.log(execution, 'info', `New branch created: ${branchName} from ${from}`);
+      }
     }
 
     return {

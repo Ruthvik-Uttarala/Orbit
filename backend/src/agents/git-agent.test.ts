@@ -61,4 +61,19 @@ describe('GitAgent', () => {
     expect(execution.output?.commit).toBeTruthy();
     expect(runGit(repoDir, ['log', '--oneline', '-1'])).toContain('Add feature file');
   });
+
+  it('creates a branch from the current workspace when uncommitted changes exist', async () => {
+    fs.writeFileSync(path.join(repoDir, 'draft.txt'), 'work in progress\n');
+
+    const execution = await gitAgent.execute({
+      action: 'create-branch',
+      branch: 'dirty-worktree',
+      from: 'main'
+    });
+
+    expect(execution.status).toBe('completed');
+    expect(execution.output?.branch).toBe('codex/dirty-worktree');
+    expect(runGit(repoDir, ['branch', '--show-current'])).toBe('codex/dirty-worktree');
+    expect(fs.readFileSync(path.join(repoDir, 'draft.txt'), 'utf8')).toContain('work in progress');
+  });
 });

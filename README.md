@@ -184,7 +184,9 @@ Use the backend endpoints:
 
 ### Intents
 
-- `POST /api/intent`
+- `POST /api/intent/parse`
+- `GET /api/intent/chat/:sessionId`
+- `GET /api/intent/suggestions`
 
 ### Flows
 

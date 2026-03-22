@@ -8,6 +8,7 @@ export declare class GitAgent extends BaseAgent {
     private normalizeBranchName;
     private runGit;
     private getCurrentBranch;
+    private hasUncommittedChanges;
     private getRemotes;
     private getPreferredRemote;
     private getRemoteUrl;

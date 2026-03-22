@@ -63,6 +63,11 @@ describe('Intent Engine', () => {
       expect(result.confidence).toBeLessThan(0.2);
     });
 
+    it('keeps greetings separate from workflow intents', () => {
+      const result = parseIntent('hello');
+      expect(result.intent).toBe(IntentType.UNKNOWN);
+    });
+
     it('should handle empty input', () => {
       const result = parseIntent('');
       expect(result.intent).toBe(IntentType.UNKNOWN);
@@ -108,6 +113,13 @@ describe('Intent Engine', () => {
       const description = getIntentDescription(result);
       expect(description).toContain('analyze');
       expect(description).toContain('fix');
+    });
+
+    it('returns a friendly greeting for hello', () => {
+      const result = parseIntent('hello');
+      const description = getIntentDescription(result);
+      expect(description).toContain('Hi!');
+      expect(description).toContain('deploy');
     });
   });
 });

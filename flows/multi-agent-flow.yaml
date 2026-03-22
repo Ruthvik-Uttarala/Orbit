@@ -61,9 +61,18 @@ agents:
 
 # Orchestration stages
 stages:
+  - name: workspace-preparation
+    description: Create a version-controlled workspace before editing files
+    agent: git-agent
+    steps:
+      - name: create-feature-branch
+        action: create-branch
+        from: main
+
   - name: code-generation
     description: Generate code using Code Agent
     agent: code-agent
+    depends_on: workspace-preparation
     steps:
       - name: analyze-requirements
         action: analyze
@@ -81,9 +90,6 @@ stages:
     agent: git-agent
     depends_on: code-generation
     steps:
-      - name: create-feature-branch
-        action: create-branch
-        from: main
       - name: commit-changes
         action: commit
         files: source-files
