@@ -16,6 +16,8 @@ variables:
 default:
   image: node:18
   interruptible: true
+  tags:
+    - macos
 
 .backend-node:
   cache:
