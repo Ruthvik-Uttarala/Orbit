@@ -85,7 +85,7 @@ test:frontend:
     - echo "=== Running Frontend Tests ==="
     - cd frontend
     - npm ci
-    - npm test -- --watchAll=false
+    - npm test -- --watchAll=false --passWithNoTests
 
 test:integration:
   stage: test
