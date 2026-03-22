@@ -3,90 +3,93 @@
 // Orbit DevOps - Flow Routes
 // API endpoints for flow execution and management
 // ============================================================
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.flowsRouter = void 0;
 const express_1 = require("express");
 const uuid_1 = require("uuid");
 const types_1 = require("../services/types");
 const orchestrator_1 = require("../services/orchestrator");
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const yaml = __importStar(require("js-yaml"));
+const flow_catalog_1 = require("../services/flow-catalog");
 exports.flowsRouter = (0, express_1.Router)();
 // Get all flow definitions
 exports.flowsRouter.get('/definitions', (_req, res) => {
     try {
-        // Try multiple paths for flows directory
-        const possiblePaths = [
-            path.join(process.cwd(), 'flows'),
-            path.join(process.cwd(), '..', 'flows'),
-            path.join(__dirname, '..', '..', 'flows')
-        ];
-        let flowsDir = '';
-        for (const p of possiblePaths) {
-            if (fs.existsSync(p)) {
-                flowsDir = p;
-                break;
-            }
-        }
-        if (!flowsDir) {
-            res.json({ flows: [] });
-            return;
-        }
-        const files = fs.readdirSync(flowsDir).filter(f => f.endsWith('.yaml'));
-        const definitions = files.map(file => {
-            try {
-                const content = fs.readFileSync(path.join(flowsDir, file), 'utf-8');
-                const parsed = yaml.load(content);
-                return {
-                    name: parsed.name,
-                    version: parsed.version,
-                    description: parsed.description,
-                    triggers: parsed.triggers,
-                    stages: parsed.stages?.map((s) => s.name) || []
-                };
-            }
-            catch (e) {
-                return null;
-            }
-        }).filter(Boolean);
+        const definitions = (0, flow_catalog_1.loadFlowCatalog)().map(({ fileName, definition }) => ({
+            fileName,
+            name: definition.name,
+            version: definition.version,
+            description: definition.description,
+            triggers: definition.triggers,
+            stages: definition.stages?.map(stage => ({
+                name: stage.name,
+                agent: stage.agent,
+                stepCount: stage.steps?.length || 0
+            })) || [],
+            agents: Array.from(new Set(definition.stages?.map(stage => stage.agent) || []))
+        }));
         res.json({ flows: definitions });
     }
     catch (error) {
         res.status(500).json({ error: 'Failed to load flow definitions', details: error.message });
+    }
+});
+// Resolve flows for a trigger event
+exports.flowsRouter.post('/resolve-trigger', (req, res) => {
+    try {
+        const { type, action, endpoint, project, ref } = req.body || {};
+        if (!type) {
+            res.status(400).json({ error: 'type is required' });
+            return;
+        }
+        const matches = (0, flow_catalog_1.resolveFlowsForTrigger)({ type, action, endpoint, project, ref }).map(({ fileName, definition }) => ({
+            fileName,
+            flowName: definition.name,
+            description: definition.description,
+            triggers: definition.triggers
+        }));
+        res.json({
+            trigger: { type, action, endpoint, project, ref },
+            matches
+        });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Failed to resolve trigger', details: error.message });
+    }
+});
+// Trigger execution from a trigger event
+exports.flowsRouter.post('/trigger-event', async (req, res) => {
+    try {
+        const { trigger, parameters } = req.body || {};
+        if (!trigger?.type) {
+            res.status(400).json({ error: 'trigger.type is required' });
+            return;
+        }
+        const matches = (0, flow_catalog_1.resolveFlowsForTrigger)(trigger);
+        if (matches.length === 0) {
+            res.status(404).json({ error: 'No matching flow found for trigger' });
+            return;
+        }
+        const selectedFlow = matches[0].definition.name;
+        const executionId = (0, uuid_1.v4)();
+        orchestrator_1.flowOrchestrator.executeFlow(executionId, selectedFlow, {
+            trigger,
+            ...(parameters || {})
+        })
+            .then(result => {
+            console.log(`[Flow Trigger] ${selectedFlow} completed: ${result.success}`);
+        })
+            .catch(error => {
+            console.error(`[Flow Trigger] ${selectedFlow} failed:`, error);
+        });
+        res.status(202).json({
+            executionId,
+            flowName: selectedFlow,
+            status: types_1.FlowStatus.PENDING,
+            message: `Started ${selectedFlow} from ${trigger.type} trigger`
+        });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Failed to trigger flow from event', details: error.message });
     }
 });
 // Get flow status
@@ -114,6 +117,14 @@ exports.flowsRouter.get('/logs/:id', async (req, res) => {
     const execution = await orchestrator_1.flowOrchestrator.getExecution(id);
     if (!execution) {
         res.status(404).json({ error: 'Flow execution not found' });
+        return;
+    }
+    const structured = req.query.structured === 'true';
+    if (structured) {
+        res.json({
+            executionId: id,
+            logs: execution.logs
+        });
         return;
     }
     const logs = execution.logs.map(log => {

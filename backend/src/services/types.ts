@@ -207,6 +207,8 @@ export interface FlowDefinition {
     type: string;
     action?: string;
     endpoint?: string;
+    project?: string;
+    ref?: string;
   }>;
   stages: FlowStage[];
   error_handling?: {

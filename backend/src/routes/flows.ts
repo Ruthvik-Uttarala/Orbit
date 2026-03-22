@@ -7,56 +7,97 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { FlowExecution, FlowStatus } from '../services/types';
 import { flowOrchestrator } from '../services/orchestrator';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
+import { loadFlowCatalog, resolveFlowsForTrigger } from '../services/flow-catalog';
 
 export const flowsRouter = Router();
 
 // Get all flow definitions
 flowsRouter.get('/definitions', (_req: Request, res: Response) => {
   try {
-    // Try multiple paths for flows directory
-    const possiblePaths = [
-      path.join(process.cwd(), 'flows'),
-      path.join(process.cwd(), '..', 'flows'),
-      path.join(__dirname, '..', '..', 'flows')
-    ];
-    
-    let flowsDir = '';
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        flowsDir = p;
-        break;
-      }
-    }
-    
-    if (!flowsDir) {
-      res.json({ flows: [] });
-      return;
-    }
-    
-    const files = fs.readdirSync(flowsDir).filter(f => f.endsWith('.yaml'));
-    
-    const definitions = files.map(file => {
-      try {
-        const content = fs.readFileSync(path.join(flowsDir, file), 'utf-8');
-        const parsed = yaml.load(content) as any;
-        return {
-          name: parsed.name,
-          version: parsed.version,
-          description: parsed.description,
-          triggers: parsed.triggers,
-          stages: parsed.stages?.map((s: any) => s.name) || []
-        };
-      } catch (e) {
-        return null;
-      }
-    }).filter(Boolean);
+    const definitions = loadFlowCatalog().map(({ fileName, definition }) => ({
+      fileName,
+      name: definition.name,
+      version: definition.version,
+      description: definition.description,
+      triggers: definition.triggers,
+      stages: definition.stages?.map(stage => ({
+        name: stage.name,
+        agent: stage.agent,
+        stepCount: stage.steps?.length || 0
+      })) || [],
+      agents: Array.from(new Set(definition.stages?.map(stage => stage.agent) || []))
+    }));
     
     res.json({ flows: definitions });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load flow definitions', details: (error as Error).message });
+  }
+});
+
+// Resolve flows for a trigger event
+flowsRouter.post('/resolve-trigger', (req: Request, res: Response) => {
+  try {
+    const { type, action, endpoint, project, ref } = req.body || {};
+
+    if (!type) {
+      res.status(400).json({ error: 'type is required' });
+      return;
+    }
+
+    const matches = resolveFlowsForTrigger({ type, action, endpoint, project, ref }).map(({ fileName, definition }) => ({
+      fileName,
+      flowName: definition.name,
+      description: definition.description,
+      triggers: definition.triggers
+    }));
+
+    res.json({
+      trigger: { type, action, endpoint, project, ref },
+      matches
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to resolve trigger', details: (error as Error).message });
+  }
+});
+
+// Trigger execution from a trigger event
+flowsRouter.post('/trigger-event', async (req: Request, res: Response) => {
+  try {
+    const { trigger, parameters } = req.body || {};
+
+    if (!trigger?.type) {
+      res.status(400).json({ error: 'trigger.type is required' });
+      return;
+    }
+
+    const matches = resolveFlowsForTrigger(trigger);
+    if (matches.length === 0) {
+      res.status(404).json({ error: 'No matching flow found for trigger' });
+      return;
+    }
+
+    const selectedFlow = matches[0].definition.name;
+    const executionId = uuidv4();
+
+    flowOrchestrator.executeFlow(executionId, selectedFlow, {
+      trigger,
+      ...(parameters || {})
+    })
+      .then(result => {
+        console.log(`[Flow Trigger] ${selectedFlow} completed: ${result.success}`);
+      })
+      .catch(error => {
+        console.error(`[Flow Trigger] ${selectedFlow} failed:`, error);
+      });
+
+    res.status(202).json({
+      executionId,
+      flowName: selectedFlow,
+      status: FlowStatus.PENDING,
+      message: `Started ${selectedFlow} from ${trigger.type} trigger`
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to trigger flow from event', details: (error as Error).message });
   }
 });
 
@@ -92,6 +133,16 @@ flowsRouter.get('/logs/:id', async (req: Request, res: Response) => {
     return;
   }
   
+  const structured = req.query.structured === 'true';
+
+  if (structured) {
+    res.json({
+      executionId: id,
+      logs: execution.logs
+    });
+    return;
+  }
+
   const logs = execution.logs.map(log => {
     if (typeof log === 'string') return log;
     return log.message;
