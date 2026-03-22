@@ -14,6 +14,7 @@ export declare class DebugAgent extends BaseAgent {
      */
     fullHealingCycle(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>>;
     private classifyFailure;
+    private analyzePipelineFailure;
     getHealingHistory(): HealingAttempt[];
 }
 export declare const debugAgent: DebugAgent;

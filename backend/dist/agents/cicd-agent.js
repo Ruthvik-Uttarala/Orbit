@@ -54,6 +54,18 @@ class CICDAgent extends base_agent_1.BaseAgent {
                 }
                 const finalStatus = finalPipeline.status;
                 const pipelineSummary = this.toPipelineSummary(finalPipeline, 'cicd-agent');
+                const jobs = await gitlab_adapter_1.gitlabAdapter.getPipelineJobs(pipeline.id);
+                const stages = jobs.length > 0
+                    ? jobs.map(job => ({
+                        name: job.name,
+                        status: job.status,
+                        stage: job.stage
+                    }))
+                    : [
+                        { name: 'build', status: shouldFail ? 'failed' : 'passed', stage: 'build' },
+                        { name: 'test', status: shouldFail ? 'failed' : 'passed', stage: 'test' },
+                        { name: 'quality', status: 'passed', stage: 'quality' }
+                    ];
                 this.log(execution, 'info', `Pipeline completed: ${finalStatus}`);
                 return {
                     pipelineId: pipeline.id,
@@ -62,14 +74,15 @@ class CICDAgent extends base_agent_1.BaseAgent {
                     url: finalPipeline.webUrl,
                     latestPipeline: pipelineSummary,
                     pipelines: [pipelineSummary],
-                    stages: [
-                        { name: 'build', status: shouldFail ? 'failed' : 'passed', duration: '45s' },
-                        { name: 'test', status: shouldFail ? 'failed' : 'passed', duration: '120s' },
-                        { name: 'quality', status: 'passed', duration: '30s' }
-                    ],
+                    stages,
                     userMessage: shouldFail
                         ? 'The build encountered an issue. Analyzing the problem...'
-                        : 'Build and tests completed successfully!'
+                        : finalStatus === 'success'
+                            ? 'Build and tests completed successfully!'
+                            : `Pipeline finished with status ${finalStatus}`,
+                    error: finalStatus === 'failed' || finalStatus === 'canceled'
+                        ? `Pipeline ${pipeline.id} finished with status ${finalStatus}`
+                        : undefined
                 };
             }
             throw new Error('Pipeline trigger returned no result');
@@ -88,15 +101,24 @@ class CICDAgent extends base_agent_1.BaseAgent {
             }
         });
         const pipelineSummary = this.toPipelineSummary(pipeline, 'cicd-agent');
+        const jobs = await gitlab_adapter_1.gitlabAdapter.getPipelineJobs(pipelineId);
         return {
             pipelineId,
             finalStatus: pipeline.status,
             duration: '3m 15s',
             latestPipeline: pipelineSummary,
             pipelines: [pipelineSummary],
+            jobs: jobs.map(job => ({
+                name: job.name,
+                status: job.status,
+                stage: job.stage
+            })),
             userMessage: pipeline.status === 'success'
                 ? 'Pipeline completed successfully'
-                : `Pipeline finished with status ${pipeline.status}`
+                : `Pipeline finished with status ${pipeline.status}`,
+            error: pipeline.status === 'failed' || pipeline.status === 'canceled'
+                ? `Pipeline ${pipelineId} finished with status ${pipeline.status}`
+                : undefined
         };
     }
     async fetchResults(input, execution) {
@@ -132,7 +154,8 @@ class CICDAgent extends base_agent_1.BaseAgent {
                     { test: 'utils.test.ts > should parse input', error: 'TypeError: Cannot read property' },
                     { test: 'config.test.ts > should load config', error: 'Config file not found' }
                 ],
-                userMessage: '3 tests failed out of 24. The debug agent will analyze the failures.'
+                userMessage: '3 tests failed out of 24. The debug agent will analyze the failures.',
+                error: '3 tests failed'
             };
         }
         this.log(execution, 'info', 'All tests passed');

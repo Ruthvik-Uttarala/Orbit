@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.debugAgent = exports.DebugAgent = void 0;
 const base_agent_1 = require("./base-agent");
 const types_1 = require("../services/types");
+const gitlab_adapter_1 = require("../services/gitlab-adapter");
 class DebugAgent extends base_agent_1.BaseAgent {
     constructor() {
         super(types_1.AgentType.DEBUG, 'Debug Agent', 'Analyzes failures, identifies root causes, and applies autonomous fixes', ['analyze-logs', 'identify-issues', 'suggest-fixes', 'auto-remediation', 'retry-pipeline']);
@@ -31,9 +32,21 @@ class DebugAgent extends base_agent_1.BaseAgent {
     }
     async analyzeFailure(input, execution) {
         this.log(execution, 'info', 'Analyzing failure details...');
-        await this.work(600);
+        await this.work(300);
         const failureData = input.failure || input.error || 'Unknown failure';
         const logs = input.logs || [];
+        const pipelineId = input.pipeline?.id || input.pipelineId;
+        if (pipelineId) {
+            const pipelineAnalysis = await this.analyzePipelineFailure(pipelineId, execution);
+            return {
+                analyzed: true,
+                pipelineId,
+                classification: pipelineAnalysis.classification,
+                failingJobs: pipelineAnalysis.failingJobs,
+                evidence: pipelineAnalysis.evidence,
+                userMessage: `Found the issue in GitLab: ${pipelineAnalysis.classification.description}. ${pipelineAnalysis.classification.fixable ? 'I can suggest the next fix step.' : 'This may need manual attention.'}`
+            };
+        }
         this.log(execution, 'info', 'Examining error logs and stack traces...');
         await this.work(800);
         this.log(execution, 'info', 'Classifying failure type...');
@@ -93,6 +106,8 @@ class DebugAgent extends base_agent_1.BaseAgent {
             suggestedFix: identified.fix,
             confidence: identified.confidence,
             type: rootCause,
+            failingJobs: input.failingJobs || [],
+            evidence: input.evidence || [],
             userMessage: `Root cause: ${identified.cause}. Recommended fix: ${identified.fix}`
         };
     }
@@ -106,19 +121,35 @@ class DebugAgent extends base_agent_1.BaseAgent {
         await this.work(600);
         this.log(execution, 'info', 'Validating fix...');
         await this.work(400);
-        const fixApplied = `Applied fix for ${fixType}`;
+        const suggestedFix = input.suggestedFix || `Applied fix for ${fixType}`;
+        const fixApplied = typeof suggestedFix === 'string' ? suggestedFix : `Applied fix for ${fixType}`;
         this.log(execution, 'info', fixApplied);
         return {
             fixed: true,
             fixType,
             fixDescription: fixApplied,
-            filesModified: ['src/config.ts', 'package.json'],
+            filesModified: input.failingJobs?.length ? [] : ['src/config.ts', 'package.json'],
             userMessage: `Fix applied: ${fixApplied}. Ready to retry.`
         };
     }
     async retryWithFix(input, execution) {
         this.log(execution, 'info', 'Retrying after fix...');
         await this.work(300);
+        if (input.pipeline?.ref || input.ref) {
+            const ref = input.pipeline?.ref || input.ref;
+            this.log(execution, 'info', `Re-running pipeline on ${ref}...`);
+            const pipeline = await gitlab_adapter_1.gitlabAdapter.triggerPipeline(ref);
+            if (pipeline) {
+                return {
+                    retried: true,
+                    success: true,
+                    attemptNumber: input.attemptNumber || 1,
+                    newPipelineId: pipeline.id,
+                    ref,
+                    userMessage: `Started a new GitLab pipeline on ${ref} so we can verify the fix.`
+                };
+            }
+        }
         this.log(execution, 'info', 'Re-running build pipeline...');
         await this.work(1000);
         this.log(execution, 'info', 'Re-running tests...');
@@ -148,6 +179,33 @@ class DebugAgent extends base_agent_1.BaseAgent {
      * Detect -> Classify -> Identify -> Fix -> Retry
      */
     async fullHealingCycle(input, execution) {
+        if (input.pipeline?.id || input.pipelineId) {
+            const pipelineId = input.pipeline?.id || input.pipelineId;
+            const analysis = await this.analyzeFailure({ ...input, pipelineId }, execution);
+            const rootCause = await this.identifyRootCause({ ...input, ...analysis }, execution);
+            const fix = await this.applyFix({ ...input, ...analysis, ...rootCause }, execution);
+            const retry = await this.retryWithFix({ ...input, ...analysis, ...rootCause, ...fix }, execution);
+            const healed = retry.success === true;
+            return {
+                healed,
+                attempts: [
+                    {
+                        attemptNumber: input.attemptNumber || 1,
+                        timestamp: new Date().toISOString(),
+                        failureType: analysis.classification?.type || 'unknown-error',
+                        rootCause: rootCause.rootCause,
+                        fixApplied: fix.fixDescription,
+                        outcome: healed ? 'success' : 'failure',
+                        logs: [...execution.logs]
+                    }
+                ],
+                totalAttempts: input.attemptNumber || 1,
+                finalOutcome: healed ? 'success' : 'failure',
+                userMessage: healed
+                    ? 'I analyzed the failing GitLab pipeline and started a retry with the recommended fix path.'
+                    : 'I analyzed the failing GitLab pipeline and collected the likely cause, but I could not restart it automatically.'
+            };
+        }
         const maxAttempts = input.maxAttempts || 3;
         const attempts = [];
         this.log(execution, 'info', '=== Starting Self-Healing Cycle ===');
@@ -225,6 +283,35 @@ class DebugAgent extends base_agent_1.BaseAgent {
             return { type: 'runtime-error', severity: 'high', description: 'Runtime error in application', fixable: true };
         }
         return { type: 'unknown-error', severity: 'medium', description: 'Unclassified error', fixable: false };
+    }
+    async analyzePipelineFailure(pipelineId, execution) {
+        this.log(execution, 'info', `Collecting failed jobs from pipeline ${pipelineId}...`);
+        const jobs = await gitlab_adapter_1.gitlabAdapter.getPipelineJobs(pipelineId);
+        const failingJobs = jobs
+            .filter(job => job.status === 'failed' || job.status === 'canceled')
+            .map(job => ({
+            id: job.id,
+            name: job.name,
+            stage: job.stage,
+            status: job.status
+        }));
+        const evidence = [];
+        for (const job of failingJobs.slice(0, 3)) {
+            this.log(execution, 'info', `Fetching logs for failed job ${job.name}...`);
+            try {
+                const trace = await gitlab_adapter_1.gitlabAdapter.getJobLogs(job.id);
+                evidence.push(trace.slice(-1500));
+            }
+            catch (error) {
+                evidence.push(`Unable to fetch logs for ${job.name}: ${error.message}`);
+            }
+        }
+        const classification = this.classifyFailure(failingJobs.map(job => `${job.stage}:${job.name}:${job.status}`).join('\n'), evidence);
+        return {
+            classification,
+            failingJobs,
+            evidence
+        };
     }
     getHealingHistory() {
         return this.healingHistory;

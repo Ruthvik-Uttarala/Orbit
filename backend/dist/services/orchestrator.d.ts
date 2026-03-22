@@ -9,6 +9,7 @@ declare class FlowOrchestrator {
     private hasActivePipeline;
     private createRunningPipelineResult;
     private mergeExecutionOutput;
+    private getAgentOutputError;
     /**
      * Create a structured log entry
      */

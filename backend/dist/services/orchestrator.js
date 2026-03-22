@@ -196,6 +196,19 @@ class FlowOrchestrator {
             execution.result.latestPipeline = latestPipeline;
         }
     }
+    getAgentOutputError(output) {
+        if (!output) {
+            return undefined;
+        }
+        const status = output.status || output.finalStatus;
+        if (status === 'failed' || status === 'canceled') {
+            return output.error || `Agent-reported status ${status}`;
+        }
+        if (output.tests?.failed && output.tests.failed > 0) {
+            return output.error || `${output.tests.failed} tests failed`;
+        }
+        return undefined;
+    }
     /**
      * Create a structured log entry
      */
@@ -462,6 +475,10 @@ class FlowOrchestrator {
                     throw new Error(result.error || `${stageDef.name} failed`);
                 }
                 this.mergeExecutionOutput(execution, result.output);
+                const outputError = this.getAgentOutputError(result.output);
+                if (outputError) {
+                    throw new Error(outputError);
+                }
                 if (this.hasActivePipeline(execution)) {
                     step.status = 'running';
                     step.message = result.output?.userMessage || 'Waiting for GitLab pipeline';
@@ -545,6 +562,10 @@ class FlowOrchestrator {
                 execution.logs.push(log);
             }
             this.mergeExecutionOutput(execution, result.output);
+            const outputError = this.getAgentOutputError(result.output);
+            if (outputError) {
+                throw new Error(outputError);
+            }
             if (result.status === 'failed') {
                 throw new Error(result.error || `Step ${step.name} failed`);
             }
@@ -572,7 +593,9 @@ class FlowOrchestrator {
                 failure: error.message,
                 stage: stage.name || stage,
                 parameters,
-                attemptNumber: execution.retryCount
+                attemptNumber: execution.retryCount,
+                pipeline: execution.latestPipeline,
+                logs: execution.logs
             });
             for (const log of healResult.logs) {
                 execution.logs.push(log);
