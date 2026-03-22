@@ -201,7 +201,7 @@ exports.orbitRouter.post('/build', async (req, res) => {
     const activity = addActivity('build', 'Starting a fresh build', 'running', { executionId });
     // Start build asynchronously
     orchestrator_1.flowOrchestrator.executeFlow(executionId, 'build-flow', {
-        branch: branch || gitlab_adapter_1.gitlabAdapter.getDefaultRef(),
+        sourceRef: branch || gitlab_adapter_1.gitlabAdapter.getDefaultRef(),
         ...parameters
     }).then(result => {
         // Update activity status

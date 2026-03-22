@@ -245,7 +245,7 @@ orbitRouter.post('/build', async (req: Request, res: Response) => {
   
   // Start build asynchronously
   flowOrchestrator.executeFlow(executionId, 'build-flow', {
-    branch: branch || gitlabAdapter.getDefaultRef(),
+    sourceRef: branch || gitlabAdapter.getDefaultRef(),
     ...parameters
   }).then(result => {
     // Update activity status
