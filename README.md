@@ -1,195 +1,216 @@
-# Orbit DevOps System
+# Orbit
 
-AI-native GitLab DevOps system with natural-language UX, hidden Git complexity, real GitLab agent/flow execution, CI/CD-driven deployment workflow, and multi-agent orchestration.
+Orbit is an AI-native DevOps control plane for GitLab. A user can click a simple action or type a request like “deploy my app,” and Orbit maps that intent to a flow, coordinates multiple agents, triggers a real GitLab pipeline, and shows progress back in the UI.
 
-## Overview
+This project was built for the **GitLab Duo Agent Platform Challenge**.
 
-Orbit is an intelligent DevOps platform that abstracts technical workflow into intent/action-driven behavior. Users interact through a simple UI while the system handles Git operations, CI/CD pipelines, and deployment automatically.
+## What Orbit Does
 
-## Features
+- Turns plain-language or one-click requests into SDLC actions
+- Runs GitLab-backed flows for deploy, build, test, debug, update, and rollback
+- Coordinates multiple agents:
+  - **Code Agent** for bounded repo changes
+  - **Version Control Agent** for real local Git actions
+  - **CI/CD Agent** for real GitLab pipeline execution
+  - **Debug Agent** for failure analysis and self-healing retries
+  - **Deploy Agent** for deployment orchestration and live pipeline tracking
+- Keeps the user-facing experience simple while hiding Git and CI/CD complexity
 
-- **Natural-Language UX**: Simple action-based interface hiding Git complexity
-- **GitLab Integration**: Real GitLab agent and flow execution
-- **CI/CD-Driven Deployment**: Automated pipeline triggers and deployments
-- **Multi-Agent Orchestration**: 
-  - Code Agent: Generates and modifies code
-  - Git Agent: Handles version control operations
-  - CI/CD Agent: Manages pipeline execution
-  - Debug Agent: Analyzes and fixes failures
+## Current Demo Story
 
-## Project Structure
+Orbit currently demonstrates a **real GitLab workflow orchestration path**:
 
-```
-orbit-devops/
-├── .gitlab/                    # GitLab configurations
-│   ├── agents/                 # GitLab Agent configurations
-│   │   └── orbit-deploy-agent/ # Main deployment agent config
-├── backend/                   # Backend API server
-│   ├── src/
-│   │   ├── agents/            # Agent implementations
-│   │   ├── services/          # Business logic
-│   │   ├── routes/            # API routes
-│   │   └── index.ts           # Entry point
-│   └── package.json
-├── frontend/                  # React frontend (Orbit v1 UI)
-│   ├── src/
-│   │   ├── services/          # API services
-│   │   └── App.tsx            # Main app
-│   └── package.json
-├── flows/                     # Flow definitions
-│   ├── deploy-flow.yaml       # Deployment flow
-│   └── multi-agent-flow.yaml  # Multi-agent orchestration
-├── .gitlab-ci.yml             # Main CI/CD pipeline
-└── package.json              # Root package.json
-```
+1. User clicks **Deploy App** or types a request in **Ask Orbit**
+2. Orbit resolves the request to a flow
+3. Orbit starts the flow and coordinates the right agents
+4. Orbit triggers a real GitLab pipeline on this project
+5. GitLab runs validation, build, and test work
+6. Orbit shows the live pipeline state in the UI
 
-## Phase 1: Core Infrastructure
+Important note: in the current MVP, “deploy” means **trigger and track the delivery pipeline through GitLab**. It is not yet a fully hosted production deployment target.
 
-- GitLab project structure configured
-- MIT License and README present
-- `.gitlab-ci.yml` configured
-- GitLab Agent Platform activated
-- First working agent (`orbit-deploy-agent`) configured
-- First working flow (`deploy-flow`) configured
-- Basic Orbit v1 UI with Deploy action
+## Hackathon Fit
 
-## Phase 2: First Working Agent System
+This repo is designed to match the challenge requirements:
 
-- UI button triggers real backend/flow pathway
-- System sends correct requests to GitLab
-- GitLab flow executes via CI/CD
-- Deployment logic connected
-- Visible status loader/in-progress state
-- Success state with logs visible
+- **Working agent or flow**: Orbit runs real flows and agent actions
+- **SDLC action, not just chat**: deploy/build/test/debug/update/rollback all map to workflows
+- **GitLab-based implementation**: GitLab repo, GitLab CI, GitLab agent configs, and GitLab-triggered pipelines are all part of the system
+- **Source + YAML + instructions**: code, flow YAML, agent YAML, setup steps, and demo docs are included here
 
-## Phase 3: Multi-Agent Flow
+## Main Features
 
-- Multi-agent orchestration with:
-  - Code Agent
-  - Git Agent
-  - CI/CD Agent
-  - Debug Agent
-- End-to-end automation:
-  - Code generated/modified
-  - Changes committed through agent path
-  - Pipeline runs
-  - Failures analyzed and fixed
-- Live progress steps and timeline behavior
+### User Experience
 
-## Getting Started
+- Dashboard with one-click actions:
+  - **Deploy App**
+  - **Build App**
+  - **Run Tests**
+  - **Fix Issues**
+- **Ask Orbit** natural-language interface
+- **Activity** view with current operation, step progress, and pipeline links
 
-### Prerequisites
+### Flows
 
-- Node.js 18+
-- GitLab account with agent support
-- GitLab Runner configured
+- `deploy-flow`
+- `build-flow`
+- `test-flow`
+- `debug-flow`
+- `update-flow`
+- `rollback-flow`
+- `multi-agent-flow`
 
-### Environment Variables
+### GitLab Features In Use
 
-Create `.env` files in `backend/` and `frontend/` directories:
-
-**Backend (.env)**
-```
-GITLAB_TOKEN=your_gitlab_token
-GITLAB_PROJECT_ID=your_project_id
-GITLAB_AGENT=orbit-deploy-agent
-PORT=3001
-```
-
-**Frontend (.env)**
-```
-REACT_APP_API_URL=http://localhost:3001
-```
-
-### Installation
-
-```bash
-# Install root dependencies
-npm install
-
-# Install backend dependencies
-cd backend && npm install
-
-# Install frontend dependencies
-cd frontend && npm install
-```
-
-### Development
-
-```bash
-# Start backend (from backend directory)
-npm run dev
-
-# Start frontend (from frontend directory)
-npm start
-```
-
-### Building
-
-```bash
-# Build both frontend and backend from the repo root
-npm run build
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/flows/trigger` | POST | Trigger a flow execution |
-| `/api/flows/status/:id` | GET | Get flow status |
-| `/api/flows/logs/:id` | GET | Get flow logs |
-| `/api/agents/execute` | POST | Execute agent task |
-| `/api/deploy` | POST | Trigger deployment |
-
-## GitLab Integration
-
-### Agent Configuration
-
-The GitLab deploy agent (`orbit-deploy-agent`) is configured in `.gitlab/agents/orbit-deploy-agent/config.yaml` and handles:
-- Kubernetes namespace management
-- CI/CD pipeline coordination
-- Resource synchronization
-
-### Flow Configuration
-
-Flows are defined in `flows/` directory with YAML configuration:
-- `deploy-flow.yaml`: Standard deployment flow
-- `multi-agent-flow.yaml`: Multi-agent orchestration
-
-## Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run backend tests
-cd backend && npm test
-
-# Run frontend tests
-cd frontend && npm test
-
-# Run integration tests
-npm run test:integration
-```
+- GitLab CI/CD pipelines via `.gitlab-ci.yml`
+- GitLab project + branch-based execution
+- GitLab agent configuration in `.gitlab/agents/`
+- Flow trigger resolution from YAML metadata
+- Structured execution logs and pipeline status tracking
 
 ## Architecture
 
+```text
+Orbit UI (React)
+    ↓
+Backend API (Node.js / Express / TypeScript)
+    ↓
+Intent + Flow Orchestrator
+    ↓
+Agents (Code / Git / CI-CD / Debug / Deploy / Security)
+    ↓
+GitLab API + GitLab CI/CD Pipeline
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Orbit UI      │────▶│   Backend API    │────▶│   GitLab API    │
-│   (Frontend)    │     │   (Node.js)      │     │   (REST/GraphQL)│
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                              │
-                              ▼
-                       ┌──────────────────┐
-                       │  Agent System    │
-                       │  - Code Agent    │
-                       │  - Git Agent     │
-                       │  - CI/CD Agent   │
-                       │  - Debug Agent   │
-                       └──────────────────┘
+
+## Repository Layout
+
+```text
+.gitlab/                  GitLab agent configs
+agents/                   Agent YAML definitions
+api/                      API route adapters
+backend/                  Express + TypeScript backend
+flows/                    Flow YAML definitions
+frontend/                 React UI
+.gitlab-ci.yml            Main CI/CD pipeline
 ```
+
+## Prerequisites
+
+- Node.js 18+
+- npm
+- GitLab account
+- GitLab personal access token with `api` scope
+
+## Environment Setup
+
+Create `backend/.env`:
+
+```env
+PORT=3001
+NODE_ENV=development
+GITLAB_TOKEN=your_gitlab_token
+GITLAB_PROJECT_ID=your_gitlab_project_id
+GITLAB_AGENT=orbit-deploy-agent
+GITLAB_API_URL=https://gitlab.com/api/v4
+GITLAB_REF=hackathon-mvp
+DEFAULT_FLOW=deploy-flow
+MULTI_AGENT_FLOW=multi-agent-flow
+LOG_LEVEL=info
+```
+
+The frontend uses the default local backend URL through its proxy, so no extra frontend env file is required for local development.
+
+## Local Development
+
+Install dependencies:
+
+```bash
+cd /path/to/Orbit
+npm install
+cd /path/to/Orbit/backend && npm install
+cd /path/to/Orbit/frontend && npm install
+```
+
+Run the app:
+
+```bash
+cd /path/to/Orbit
+npm run dev
+```
+
+Local URLs:
+
+- UI: [http://localhost:3000](http://localhost:3000)
+- Backend health: [http://localhost:3001/api/health](http://localhost:3001/api/health)
+
+## Suggested Test Paths
+
+### 1. One-click deploy
+
+- Open Orbit at [http://localhost:3000](http://localhost:3000)
+- Click **Deploy App**
+- Watch the **Activity** view
+- Open the linked GitLab pipeline
+
+### 2. Natural-language request
+
+In **Ask Orbit**, try:
+
+- `deploy my app`
+- `run tests`
+- `fix the issue`
+- `rollback the last deployment`
+- `what is the current status?`
+
+### 3. Trigger-aware flow resolution
+
+Use the backend endpoints:
+
+- `GET /api/flows/definitions`
+- `POST /api/flows/resolve-trigger`
+- `POST /api/flows/trigger-event`
+- `GET /api/flows/logs/:id?structured=true`
+
+## API Surface
+
+### Orbit
+
+- `GET /api/health`
+- `POST /api/orbit/deploy`
+- `POST /api/orbit/build`
+- `POST /api/orbit/test`
+- `POST /api/orbit/fix`
+- `GET /api/orbit/status/:id`
+
+### Intents
+
+- `POST /api/intent`
+
+### Flows
+
+- `GET /api/flows`
+- `GET /api/flows/definitions`
+- `POST /api/flows/trigger`
+- `POST /api/flows/resolve-trigger`
+- `POST /api/flows/trigger-event`
+- `GET /api/flows/status/:id`
+- `GET /api/flows/logs/:id`
+
+## CI/CD Notes
+
+The pipeline is intentionally optimized for hackathon reliability and shared-runner usage:
+
+- lean validation stage
+- backend and frontend builds
+- backend tests by default
+- frontend tests only when test files exist
+- integration tests are manual on protected branches
+
+## Demo + Submission Docs
+
+- Demo script: `docs/DEMO_SCRIPT.md`
+- Submission notes: `docs/HACKATHON_SUBMISSION.md`
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT. See `LICENSE`.
