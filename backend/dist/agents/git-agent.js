@@ -157,6 +157,28 @@ class GitAgent extends base_agent_1.BaseAgent {
             return null;
         }
     }
+    normalizeFiles(files) {
+        if (!files) {
+            return [];
+        }
+        if (typeof files === 'string') {
+            return [files];
+        }
+        if (Array.isArray(files)) {
+            return files
+                .map(file => {
+                if (typeof file === 'string') {
+                    return file;
+                }
+                if (file && typeof file === 'object' && 'path' in file && typeof file.path === 'string') {
+                    return file.path;
+                }
+                return '';
+            })
+                .filter(Boolean);
+        }
+        return [];
+    }
     async createBranch(input, execution) {
         const branchName = this.normalizeBranchName(input.branch);
         const from = input.from || 'main';
@@ -178,14 +200,11 @@ class GitAgent extends base_agent_1.BaseAgent {
         };
     }
     async commitChanges(input, execution) {
-        const files = input.files;
+        const files = this.normalizeFiles(input.files);
         const message = input.message || 'Applied changes via Orbit';
         this.log(execution, 'info', 'Saving your changes...');
-        if (Array.isArray(files) && files.length > 0) {
+        if (files.length > 0) {
             await this.runGit(['add', '--', ...files]);
-        }
-        else if (typeof files === 'string') {
-            await this.runGit(['add', '--', files]);
         }
         else {
             await this.runGit(['add', '-A']);

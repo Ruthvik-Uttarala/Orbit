@@ -13,6 +13,7 @@ export declare class GitAgent extends BaseAgent {
     private getRemoteUrl;
     private toGitLabProjectPath;
     private createGitLabMergeRequest;
+    private normalizeFiles;
     private createBranch;
     private commitChanges;
     private pushChanges;

@@ -58,6 +58,7 @@ declare class FlowOrchestrator {
      * Execute a stage from YAML flow definition through the appropriate agent
      */
     private executeStage;
+    private resolveStepInput;
     /**
      * Self-healing: attempt to recover from a failure (Phase 5)
      */

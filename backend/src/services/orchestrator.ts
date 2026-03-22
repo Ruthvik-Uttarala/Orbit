@@ -623,10 +623,11 @@ class FlowOrchestrator {
 
     // Execute each step in the stage
     for (const step of stage.steps || []) {
+      const resolvedStep = this.resolveStepInput(step, execution, parameters);
       const result = await agent.execute({
         ...parameters,
-        action: step.action,
-        ...step
+        action: resolvedStep.action,
+        ...resolvedStep
       });
 
       // Merge agent logs
@@ -649,6 +650,51 @@ class FlowOrchestrator {
         return;
       }
     }
+  }
+
+  private resolveStepInput(step: Record<string, any>, execution: FlowExecution, parameters: Record<string, any>): Record<string, any> {
+    const output = execution.result?.output || {};
+
+    const resolveValue = (value: any): any => {
+      if (Array.isArray(value)) {
+        return value.map(resolveValue);
+      }
+
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value).map(([key, entryValue]) => [key, resolveValue(entryValue)])
+        );
+      }
+
+      if (typeof value !== 'string') {
+        return value;
+      }
+
+      if (value in parameters) {
+        return parameters[value];
+      }
+
+      if (value in output) {
+        return output[value];
+      }
+
+      const camelCaseKey = value.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+      if (camelCaseKey in output) {
+        return output[camelCaseKey];
+      }
+
+      if (value === 'requirements' && parameters.feature) {
+        return parameters.feature;
+      }
+
+      if (value === 'source-files' && output.files) {
+        return output.files;
+      }
+
+      return value;
+    };
+
+    return resolveValue(step);
   }
 
   /**

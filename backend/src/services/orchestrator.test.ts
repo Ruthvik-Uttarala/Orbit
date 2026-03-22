@@ -6,6 +6,10 @@
 import { flowOrchestrator } from './orchestrator';
 import { FlowStatus } from './types';
 import { gitlabAdapter } from './gitlab-adapter';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 jest.setTimeout(90000);
 
@@ -98,5 +102,64 @@ describe('Flow Orchestrator', () => {
 
     getPipelineStatusSpy.mockRestore();
     (flowOrchestrator as any).executions.delete(execId);
+  });
+
+  it('should run the multi-agent flow with real code and git side effects', async () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-multi-agent-'));
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-multi-agent-remote-'));
+    const previousRepoRoot = process.env.ORBIT_REPO_ROOT;
+    const previousGitlabToken = process.env.GITLAB_TOKEN;
+    const previousGitlabProjectId = process.env.GITLAB_PROJECT_ID;
+
+    try {
+      execFileSync('git', ['init', '--bare'], { cwd: remoteDir });
+      fs.mkdirSync(path.join(repoDir, 'backend', 'src'), { recursive: true });
+      execFileSync('git', ['init', '-b', 'main'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.name', 'Orbit Test'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.email', 'orbit@example.com'], { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# Multi Agent Repo\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repoDir });
+      execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd: repoDir });
+      execFileSync('git', ['remote', 'add', 'origin', remoteDir], { cwd: repoDir });
+
+      process.env.ORBIT_REPO_ROOT = repoDir;
+      delete process.env.GITLAB_TOKEN;
+      delete process.env.GITLAB_PROJECT_ID;
+
+      const result = await flowOrchestrator.executeFlow('test-exec-multi-agent', 'multi-agent-flow', {
+        feature: 'phase3-flow'
+      });
+
+      expect(result.success).toBe(true);
+      const currentBranch = execFileSync('git', ['branch', '--show-current'], { cwd: repoDir, encoding: 'utf8' }).trim();
+      const branchList = execFileSync('git', ['branch', '--list'], { cwd: repoDir, encoding: 'utf8' });
+      const recentLog = execFileSync('git', ['log', '--oneline', '-5'], { cwd: repoDir, encoding: 'utf8' });
+      expect(branchList).toContain('codex/');
+      expect(currentBranch).toBe('main');
+      expect(fs.existsSync(path.join(repoDir, 'backend', 'src', 'generated', 'phase3-flow', 'index.ts'))).toBe(true);
+      expect(recentLog).toContain('Applied changes via Orbit');
+    } finally {
+      if (previousRepoRoot === undefined) {
+        delete process.env.ORBIT_REPO_ROOT;
+      } else {
+        process.env.ORBIT_REPO_ROOT = previousRepoRoot;
+      }
+
+      if (previousGitlabToken === undefined) {
+        delete process.env.GITLAB_TOKEN;
+      } else {
+        process.env.GITLAB_TOKEN = previousGitlabToken;
+      }
+
+      if (previousGitlabProjectId === undefined) {
+        delete process.env.GITLAB_PROJECT_ID;
+      } else {
+        process.env.GITLAB_PROJECT_ID = previousGitlabProjectId;
+      }
+
+      fs.rmSync(repoDir, { recursive: true, force: true });
+      fs.rmSync(remoteDir, { recursive: true, force: true });
+      (flowOrchestrator as any).executions.delete('test-exec-multi-agent');
+    }
   });
 });

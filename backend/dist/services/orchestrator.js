@@ -552,10 +552,11 @@ class FlowOrchestrator {
         }
         // Execute each step in the stage
         for (const step of stage.steps || []) {
+            const resolvedStep = this.resolveStepInput(step, execution, parameters);
             const result = await agent.execute({
                 ...parameters,
-                action: step.action,
-                ...step
+                action: resolvedStep.action,
+                ...resolvedStep
             });
             // Merge agent logs
             for (const log of result.logs) {
@@ -573,6 +574,38 @@ class FlowOrchestrator {
                 return;
             }
         }
+    }
+    resolveStepInput(step, execution, parameters) {
+        const output = execution.result?.output || {};
+        const resolveValue = (value) => {
+            if (Array.isArray(value)) {
+                return value.map(resolveValue);
+            }
+            if (value && typeof value === 'object') {
+                return Object.fromEntries(Object.entries(value).map(([key, entryValue]) => [key, resolveValue(entryValue)]));
+            }
+            if (typeof value !== 'string') {
+                return value;
+            }
+            if (value in parameters) {
+                return parameters[value];
+            }
+            if (value in output) {
+                return output[value];
+            }
+            const camelCaseKey = value.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+            if (camelCaseKey in output) {
+                return output[camelCaseKey];
+            }
+            if (value === 'requirements' && parameters.feature) {
+                return parameters.feature;
+            }
+            if (value === 'source-files' && output.files) {
+                return output.files;
+            }
+            return value;
+        };
+        return resolveValue(step);
     }
     /**
      * Self-healing: attempt to recover from a failure (Phase 5)

@@ -149,6 +149,34 @@ export class GitAgent extends BaseAgent {
     }
   }
 
+  private normalizeFiles(files: unknown): string[] {
+    if (!files) {
+      return [];
+    }
+
+    if (typeof files === 'string') {
+      return [files];
+    }
+
+    if (Array.isArray(files)) {
+      return files
+        .map(file => {
+          if (typeof file === 'string') {
+            return file;
+          }
+
+          if (file && typeof file === 'object' && 'path' in file && typeof (file as { path?: unknown }).path === 'string') {
+            return (file as { path: string }).path;
+          }
+
+          return '';
+        })
+        .filter(Boolean);
+    }
+
+    return [];
+  }
+
   private async createBranch(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
     const branchName = this.normalizeBranchName(input.branch);
     const from = input.from || 'main';
@@ -173,14 +201,12 @@ export class GitAgent extends BaseAgent {
   }
 
   private async commitChanges(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
-    const files = input.files;
+    const files = this.normalizeFiles(input.files);
     const message = input.message || 'Applied changes via Orbit';
 
     this.log(execution, 'info', 'Saving your changes...');
-    if (Array.isArray(files) && files.length > 0) {
+    if (files.length > 0) {
       await this.runGit(['add', '--', ...files]);
-    } else if (typeof files === 'string') {
-      await this.runGit(['add', '--', files]);
     } else {
       await this.runGit(['add', '-A']);
     }
