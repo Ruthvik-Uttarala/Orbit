@@ -27,8 +27,6 @@ validate:config:
   script:
     - echo "=== Validating GitLab CI Configuration ==="
     - echo "CI pipeline configuration is valid"
-  tags:
-    - docker
 
 validate:agents:
   stage: validate
@@ -36,8 +34,6 @@ validate:agents:
     - echo "=== Validating Agent Configurations ==="
     - ls -la .gitlab/agents/
     - echo "Agent configurations validated"
-  tags:
-    - docker
 
 validate:flows:
   stage: validate
@@ -45,8 +41,6 @@ validate:flows:
     - echo "=== Validating Flow Configurations ==="
     - ls -la flows/
     - echo "Flow configurations validated"
-  tags:
-    - docker
 
 # Stage 2: Build
 build:backend:
@@ -61,8 +55,6 @@ build:backend:
     paths:
       - backend/dist/
     expire_in: 1 hour
-  tags:
-    - docker
 
 build:frontend:
   stage: build
@@ -76,8 +68,6 @@ build:frontend:
     paths:
       - frontend/build/
     expire_in: 1 hour
-  tags:
-    - docker
 
 # Stage 3: Test
 test:backend:
@@ -88,8 +78,6 @@ test:backend:
     - npm ci
     - npm test
   coverage: '/All files\s*\|\s*([\d\.]+)/'
-  tags:
-    - docker
 
 test:frontend:
   stage: test
@@ -98,8 +86,6 @@ test:frontend:
     - cd frontend
     - npm ci
     - npm test -- --watchAll=false
-  tags:
-    - docker
 
 test:integration:
   stage: test
@@ -107,8 +93,6 @@ test:integration:
     - echo "=== Running Integration Tests ==="
     - cd backend
     - npm run test:integration
-  tags:
-    - docker
   allow_failure: true
 
 # Stage 4: Deployment
@@ -123,8 +107,6 @@ deploy:staging:
     url: https://staging.orbit-devops.example.com
   only:
     - develop
-  tags:
-    - docker
   when: manual
 
 deploy:production:
@@ -138,8 +120,6 @@ deploy:production:
     url: https://orbit-devops.example.com
   only:
     - main
-  tags:
-    - docker
   when: manual
 
 # Pipeline triggered by GitLab Agent
@@ -150,5 +130,3 @@ agent:trigger:
     - echo "Pipeline triggered by GitLab Agent"
   only:
     - triggers
-  tags:
-    - docker
