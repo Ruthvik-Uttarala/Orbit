@@ -63,6 +63,7 @@ declare class FlowOrchestrator {
      * Self-healing: attempt to recover from a failure (Phase 5)
      */
     private attemptRecovery;
+    private retryStage;
     /**
      * Generic stage execution for unknown agents
      */

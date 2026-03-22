@@ -4,9 +4,15 @@ export declare class DebugAgent extends BaseAgent {
     private healingHistory;
     constructor();
     protected run(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>>;
+    private getRepoRoot;
+    private getHealingWorkspace;
+    private writeHealingArtifact;
     private analyzeFailure;
     private identifyRootCause;
+    private gatherContext;
+    private suggestFix;
     private applyFix;
+    private validateFix;
     private retryWithFix;
     /**
      * Full self-healing cycle (Phase 5 core)

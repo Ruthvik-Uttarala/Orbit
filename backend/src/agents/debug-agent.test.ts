@@ -36,6 +36,14 @@ describe('DebugAgent', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
+    jest.spyOn(gitlabAdapter, 'monitorPipeline').mockResolvedValue({
+      id: 303,
+      status: 'success',
+      ref: 'hackathon-mvp',
+      webUrl: 'https://gitlab.com/tmushd/Orbit/-/pipelines/303',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
 
     const execution = await debugAgent.execute({
       action: 'full-heal',
@@ -49,6 +57,7 @@ describe('DebugAgent', () => {
     expect(execution.status).toBe('completed');
     expect(execution.output?.healed).toBe(true);
     expect(execution.output?.finalOutcome).toBe('success');
-    expect(execution.output?.userMessage).toContain('started a retry');
+    expect(execution.output?.userMessage).toContain('passed after the fix');
+    expect(execution.output?.fixedFiles).toHaveLength(1);
   });
 });

@@ -734,14 +734,71 @@ class FlowOrchestrator {
       }
 
       if (healResult.output?.healed) {
-        execution.logs.push(this.createLog('Self-healing successful!', 'info', 'debug-agent'));
-        return true;
+        execution.logs.push(this.createLog('Self-healing produced a candidate fix. Retrying the failed stage...', 'info', 'debug-agent'));
+
+        const retryParameters = {
+          ...parameters,
+          ...(healResult.output?.retryParameters || {}),
+          simulateFailure: false,
+          simulateFirstFailure: false
+        };
+
+        try {
+          await this.retryStage(stage, retryParameters, execution);
+          execution.logs.push(this.createLog('Self-healing successful!', 'info', 'debug-agent'));
+          execution.result = {
+            ...(execution.result || { success: true }),
+            output: {
+              ...(execution.result?.output || {}),
+              selfHealing: {
+                recovered: true,
+                attempts: healResult.output?.attempts || [],
+                fixedFiles: healResult.output?.fixedFiles || []
+              }
+            },
+            latestPipeline: execution.latestPipeline,
+            pipelines: execution.pipelines
+          };
+          return true;
+        } catch (retryError) {
+          execution.logs.push(this.createLog(`Retry after healing failed: ${(retryError as Error).message}`, 'error', 'debug-agent'));
+          return false;
+        }
       }
 
       return false;
     } catch (healError) {
       execution.logs.push(this.createLog(`Self-healing failed: ${(healError as Error).message}`, 'error', 'debug-agent'));
       return false;
+    }
+  }
+
+  private async retryStage(stage: any, parameters: Record<string, any>, execution: FlowExecution): Promise<void> {
+    if (Array.isArray(stage.steps)) {
+      await this.executeStage(stage, parameters, execution);
+      return;
+    }
+
+    const agent = getAgent(stage.agent);
+    if (!agent) {
+      throw new Error(`Agent not found: ${stage.agent}`);
+    }
+
+    const result = await agent.execute({ ...parameters, action: stage.action });
+
+    for (const log of result.logs) {
+      execution.logs.push(log);
+    }
+
+    this.mergeExecutionOutput(execution, result.output);
+
+    const outputError = this.getAgentOutputError(result.output);
+    if (outputError) {
+      throw new Error(outputError);
+    }
+
+    if (result.status === 'failed') {
+      throw new Error(result.error || `${stage.name} failed`);
     }
   }
 

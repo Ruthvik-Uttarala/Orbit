@@ -6,6 +6,8 @@
 import { BaseAgent } from './base-agent';
 import { AgentType, AgentExecution, HealingAttempt } from '../services/types';
 import { gitlabAdapter } from '../services/gitlab-adapter';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class DebugAgent extends BaseAgent {
   private healingHistory: HealingAttempt[] = [];
@@ -25,10 +27,16 @@ export class DebugAgent extends BaseAgent {
     switch (action) {
       case 'analyze':
         return this.analyzeFailure(input, execution);
+      case 'gather':
+        return this.gatherContext(input, execution);
       case 'identify':
         return this.identifyRootCause(input, execution);
+      case 'suggest-fix':
+        return this.suggestFix(input, execution);
       case 'fix':
         return this.applyFix(input, execution);
+      case 'validate':
+        return this.validateFix(input, execution);
       case 'retry':
         return this.retryWithFix(input, execution);
       case 'full-heal':
@@ -36,6 +44,28 @@ export class DebugAgent extends BaseAgent {
       default:
         return this.analyzeFailure(input, execution);
     }
+  }
+
+  private getRepoRoot(): string {
+    return process.env.ORBIT_REPO_ROOT || path.resolve(process.cwd(), '..');
+  }
+
+  private getHealingWorkspace(): string {
+    return path.join(this.getRepoRoot(), 'backend', 'src', 'generated', 'self-healing');
+  }
+
+  private writeHealingArtifact(failureType: string, content: string) {
+    const safeType = failureType.replace(/[^a-z0-9-]+/gi, '-').toLowerCase() || 'unknown-failure';
+    const workspace = this.getHealingWorkspace();
+    const filePath = path.join(workspace, `${safeType}.ts`);
+    const existed = fs.existsSync(filePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, 'utf8');
+
+    return {
+      path: path.relative(this.getRepoRoot(), filePath),
+      status: existed ? 'updated' : 'created'
+    };
   }
 
   private async analyzeFailure(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
@@ -134,6 +164,33 @@ export class DebugAgent extends BaseAgent {
     };
   }
 
+  private async gatherContext(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
+    this.log(execution, 'info', 'Gathering logs and recent failure context...');
+    await this.work(250);
+
+    const logs = input.logs || [];
+    const context = {
+      stage: input.stage,
+      pipelineId: input.pipelineId || input.pipeline?.id,
+      logCount: Array.isArray(logs) ? logs.length : 0
+    };
+
+    return {
+      gathered: true,
+      context,
+      userMessage: 'Collected logs and execution context for the failure.'
+    };
+  }
+
+  private async suggestFix(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
+    const identified = await this.identifyRootCause(input, execution);
+    return {
+      ...identified,
+      suggested: true,
+      userMessage: `Recommended fix: ${identified.suggestedFix}`
+    };
+  }
+
   private async applyFix(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
     this.log(execution, 'info', 'Applying automated fix...');
     await this.work(500);
@@ -151,14 +208,34 @@ export class DebugAgent extends BaseAgent {
 
     const suggestedFix = input.suggestedFix || `Applied fix for ${fixType}`;
     const fixApplied = typeof suggestedFix === 'string' ? suggestedFix : `Applied fix for ${fixType}`;
+    const artifact = this.writeHealingArtifact(
+      fixType,
+      `export const selfHealingRecord = {\n  failureType: '${fixType}',\n  appliedAt: '${new Date().toISOString()}',\n  fix: '${fixApplied.replace(/'/g, "\\'")}',\n  source: 'debug-agent'\n};\n`
+    );
     this.log(execution, 'info', fixApplied);
 
     return {
       fixed: true,
       fixType,
       fixDescription: fixApplied,
-      filesModified: input.failingJobs?.length ? [] : ['src/config.ts', 'package.json'],
+      filesModified: [artifact.path],
       userMessage: `Fix applied: ${fixApplied}. Ready to retry.`
+    };
+  }
+
+  private async validateFix(input: Record<string, any>, execution: AgentExecution): Promise<Record<string, any>> {
+    this.log(execution, 'info', 'Validating the applied remediation...');
+    await this.work(250);
+
+    const filesModified = Array.isArray(input.filesModified) ? input.filesModified : [];
+    const allFilesPresent = filesModified.every(file => fs.existsSync(path.join(this.getRepoRoot(), file)));
+
+    return {
+      valid: allFilesPresent || filesModified.length === 0,
+      filesModified,
+      userMessage: allFilesPresent || filesModified.length === 0
+        ? 'The remediation files are in place and ready for retry.'
+        : 'Some remediation files are missing; the fix needs another pass.'
     };
   }
 
@@ -172,13 +249,30 @@ export class DebugAgent extends BaseAgent {
       const pipeline = await gitlabAdapter.triggerPipeline(ref);
 
       if (pipeline) {
+        const finalPipeline = await gitlabAdapter.monitorPipeline(pipeline.id, {
+          onProgress: current => {
+            this.log(execution, 'info', `Retry pipeline status: ${current.status}`);
+          }
+        });
+        const success = finalPipeline.status === 'success';
         return {
           retried: true,
-          success: true,
+          success,
           attemptNumber: input.attemptNumber || 1,
-          newPipelineId: pipeline.id,
+          newPipelineId: finalPipeline.id,
           ref,
-          userMessage: `Started a new GitLab pipeline on ${ref} so we can verify the fix.`
+          latestPipeline: {
+            id: finalPipeline.id,
+            status: finalPipeline.status,
+            ref: finalPipeline.ref,
+            url: finalPipeline.webUrl,
+            provider: 'gitlab',
+            source: 'cicd-agent',
+            updatedAt: finalPipeline.updatedAt
+          },
+          userMessage: success
+            ? `The retry pipeline on ${ref} passed after the fix.`
+            : `The retry pipeline on ${ref} still failed, so more work is needed.`
         };
       }
     }
@@ -225,6 +319,14 @@ export class DebugAgent extends BaseAgent {
       const healed = retry.success === true;
       return {
         healed,
+        retryParameters: {
+          ...input,
+          simulateFailure: false,
+          simulateFirstFailure: false,
+          healingApplied: true
+        },
+        fixedFiles: fix.filesModified || [],
+        latestPipeline: retry.latestPipeline,
         attempts: [
           {
             attemptNumber: input.attemptNumber || 1,
@@ -239,45 +341,41 @@ export class DebugAgent extends BaseAgent {
         totalAttempts: input.attemptNumber || 1,
         finalOutcome: healed ? 'success' : 'failure',
         userMessage: healed
-          ? 'I analyzed the failing GitLab pipeline and started a retry with the recommended fix path.'
-          : 'I analyzed the failing GitLab pipeline and collected the likely cause, but I could not restart it automatically.'
+          ? (retry.userMessage || 'I analyzed the failing GitLab pipeline and the retry passed after the fix.')
+          : (retry.userMessage || 'I analyzed the failing GitLab pipeline and collected the likely cause, but I could not restart it automatically.')
       };
     }
 
     const maxAttempts = input.maxAttempts || 3;
     const attempts: HealingAttempt[] = [];
+    const fixedFiles: string[] = [];
 
     this.log(execution, 'info', '=== Starting Self-Healing Cycle ===');
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       this.log(execution, 'info', `--- Healing Attempt ${attempt}/${maxAttempts} ---`);
 
-      // Step 1: Analyze
-      this.log(execution, 'info', 'Step 1: Analyzing failure...');
-      await this.work(500);
-      const classification = this.classifyFailure(input.failure || 'build-error', input.logs || []);
+      const analysis = await this.analyzeFailure(input, execution);
+      const rootCause = await this.identifyRootCause({ ...input, ...analysis }, execution);
+      const fix = await this.applyFix({ ...input, ...analysis, ...rootCause }, execution);
+      fixedFiles.push(...(fix.filesModified || []));
 
-      // Step 2: Identify root cause
-      this.log(execution, 'info', 'Step 2: Identifying root cause...');
-      await this.work(400);
-
-      // Step 3: Apply fix
-      this.log(execution, 'info', 'Step 3: Applying fix...');
-      await this.work(600);
-
-      // Step 4: Retry
-      this.log(execution, 'info', 'Step 4: Retrying build/test...');
-      await this.work(800);
-
-      // Simulate: first attempt might fail, subsequent succeed
-      const success = attempt >= 2 || !input.simulateFirstFailure;
+      const retry = await this.retryWithFix({
+        ...input,
+        ...analysis,
+        ...rootCause,
+        ...fix,
+        attemptNumber: attempt,
+        maxAttempts
+      }, execution);
+      const success = retry.success === true && (!input.simulateFirstFailure || attempt > 1);
 
       const healingAttempt: HealingAttempt = {
         attemptNumber: attempt,
         timestamp: new Date().toISOString(),
-        failureType: classification.type,
-        rootCause: classification.description,
-        fixApplied: `Fix for ${classification.type} (attempt ${attempt})`,
+        failureType: analysis.classification?.type || 'unknown-error',
+        rootCause: rootCause.rootCause,
+        fixApplied: fix.fixDescription,
         outcome: success ? 'success' : 'failure',
         logs: [...execution.logs]
       };
@@ -289,6 +387,13 @@ export class DebugAgent extends BaseAgent {
         this.log(execution, 'info', `✓ Healing successful on attempt ${attempt}`);
         return {
           healed: true,
+          retryParameters: {
+            ...input,
+            simulateFailure: false,
+            simulateFirstFailure: false,
+            healingApplied: true
+          },
+          fixedFiles,
           attempts,
           totalAttempts: attempt,
           finalOutcome: 'success',
@@ -304,6 +409,7 @@ export class DebugAgent extends BaseAgent {
     this.log(execution, 'error', `Self-healing exhausted after ${maxAttempts} attempts`);
     return {
       healed: false,
+      fixedFiles,
       attempts,
       totalAttempts: maxAttempts,
       finalOutcome: 'failure',

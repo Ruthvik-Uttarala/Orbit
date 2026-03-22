@@ -162,4 +162,59 @@ describe('Flow Orchestrator', () => {
       (flowOrchestrator as any).executions.delete('test-exec-multi-agent');
     }
   });
+
+  it('should self-heal a failing debug flow and retry successfully', async () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-self-heal-'));
+    const previousRepoRoot = process.env.ORBIT_REPO_ROOT;
+    const previousGitlabToken = process.env.GITLAB_TOKEN;
+    const previousGitlabProjectId = process.env.GITLAB_PROJECT_ID;
+
+    try {
+      fs.mkdirSync(path.join(repoDir, 'backend', 'src'), { recursive: true });
+      execFileSync('git', ['init', '-b', 'main'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.name', 'Orbit Test'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.email', 'orbit@example.com'], { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# Self Healing Repo\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repoDir });
+      execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd: repoDir });
+
+      process.env.ORBIT_REPO_ROOT = repoDir;
+      delete process.env.GITLAB_TOKEN;
+      delete process.env.GITLAB_PROJECT_ID;
+
+      const result = await flowOrchestrator.executeFlow('test-exec-self-heal', 'debug-flow', {
+        simulateFailure: true,
+        feature: 'self-heal'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output?.selfHealing?.recovered).toBe(true);
+      expect(result.output?.selfHealing?.fixedFiles?.length).toBeGreaterThan(0);
+      expect(fs.existsSync(path.join(repoDir, 'backend', 'src', 'generated', 'self-healing', 'test-failure.ts'))).toBe(true);
+
+      const recentLog = execFileSync('git', ['log', '--oneline', '-5'], { cwd: repoDir, encoding: 'utf8' });
+      expect(recentLog).toContain('Fix applied by Debug Agent');
+    } finally {
+      if (previousRepoRoot === undefined) {
+        delete process.env.ORBIT_REPO_ROOT;
+      } else {
+        process.env.ORBIT_REPO_ROOT = previousRepoRoot;
+      }
+
+      if (previousGitlabToken === undefined) {
+        delete process.env.GITLAB_TOKEN;
+      } else {
+        process.env.GITLAB_TOKEN = previousGitlabToken;
+      }
+
+      if (previousGitlabProjectId === undefined) {
+        delete process.env.GITLAB_PROJECT_ID;
+      } else {
+        process.env.GITLAB_PROJECT_ID = previousGitlabProjectId;
+      }
+
+      fs.rmSync(repoDir, { recursive: true, force: true });
+      (flowOrchestrator as any).executions.delete('test-exec-self-heal');
+    }
+  });
 });
