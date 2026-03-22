@@ -9,6 +9,7 @@ import { parseIntent, getIntentDescription, getSuggestions } from '../services/i
 import { flowOrchestrator } from '../services/orchestrator';
 import { buildSessionContext } from '../services/context-engine';
 import { createExecutionPlan, formatPlanPreview } from '../services/task-decomposer';
+import { buildStatusSummary } from '../services/status-summary';
 import { IntentType, ChatMessage, FlowStatus } from '../services/types';
 
 export const intentRouter = Router();
@@ -56,7 +57,12 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
 
   const plan = createExecutionPlan(intentResult, context);
   const planPreview = formatPlanPreview(plan);
-  const detailedDescription = `${description}\n\nExecution plan:\n${planPreview}`;
+  const statusSnapshot = intentResult.intent === IntentType.STATUS
+    ? await buildStatusSummary(context)
+    : undefined;
+  const detailedDescription = statusSnapshot
+    ? statusSnapshot.message
+    : `${description}\n\nExecution plan:\n${planPreview}`;
 
   // If intent is recognized, trigger the flow
   let executionId: string | undefined;
@@ -84,7 +90,9 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
       intent: intentResult,
       executionId,
       plan,
-      context
+      context,
+      latestExecutionId: statusSnapshot?.latestExecution?.id,
+      latestPipeline: statusSnapshot?.latestPipeline
     }
   };
   chatSessions.get(session)!.push(systemMessage);
@@ -96,6 +104,8 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
     plan,
     response: detailedDescription,
     executionId,
+    latestExecutionId: statusSnapshot?.latestExecution?.id,
+    latestPipeline: statusSnapshot?.latestPipeline,
     suggestions: intentResult.intent === IntentType.UNKNOWN ? getSuggestions() : undefined
   });
 });

@@ -45,6 +45,18 @@ describe('Intent Engine', () => {
       expect(result.flow).toBe('test-flow');
     });
 
+    it('should recognize status intent', () => {
+      const result = parseIntent('What is the status of my app?');
+      expect(result.intent).toBe(IntentType.STATUS);
+      expect(result.flow).toBe('status-check');
+    });
+
+    it('should recognize rollback intent', () => {
+      const result = parseIntent('Rollback the deployment to the previous version');
+      expect(result.intent).toBe(IntentType.ROLLBACK);
+      expect(result.flow).toBe('rollback-flow');
+    });
+
     it('should handle unknown intent gracefully', () => {
       const result = parseIntent('blah blah blah');
       expect(result.intent).toBe(IntentType.UNKNOWN);

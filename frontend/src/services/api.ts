@@ -65,6 +65,8 @@ export interface ChatMessage {
     executionId?: string;
     plan?: ExecutionPlan;
     context?: SessionContext;
+    latestExecutionId?: string;
+    latestPipeline?: PipelineSummary;
   };
 }
 
@@ -87,6 +89,8 @@ export interface IntentResponse {
   intent: IntentResult;
   response: string;
   executionId?: string;
+  latestExecutionId?: string;
+  latestPipeline?: PipelineSummary;
   suggestions?: string[];
   plan?: ExecutionPlan;
   context?: SessionContext;

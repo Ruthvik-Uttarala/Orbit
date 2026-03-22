@@ -137,6 +137,8 @@ export interface ChatMessage {
         agentType?: string;
         plan?: ExecutionPlan;
         context?: SessionContext;
+        latestExecutionId?: string;
+        latestPipeline?: PipelineSummary;
     };
 }
 export interface GitLabPipeline {

@@ -1,0 +1,41 @@
+# Test Flow Configuration
+# This flow runs project validation and reports the outcome
+
+name: test-flow
+version: v1
+description: Run the application test suite and summarize the results
+
+triggers:
+  - type: manual
+    action: test
+  - type: webhook
+    endpoint: /api/flows/test
+
+stages:
+  - name: test
+    description: Execute validation checks
+    agent: cicd-agent
+    steps:
+      - name: run-tests
+        action: test
+        timeout: 300s
+
+  - name: report
+    description: Collect and summarize results
+    agent: cicd-agent
+    depends_on: test
+    steps:
+      - name: fetch-results
+        action: results
+        timeout: 120s
+
+error_handling:
+  retry:
+    max_attempts: 2
+    backoff: exponential
+    initial_delay: 15s
+
+output:
+  logs: true
+  metrics: true
+  artifacts: true

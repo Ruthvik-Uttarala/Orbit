@@ -177,8 +177,8 @@ function App() {
       });
 
       // Track execution for polling
-      if (response.executionId) {
-        setCurrentExecutionId(response.executionId);
+      if (response.executionId || response.latestExecutionId) {
+        setCurrentExecutionId(response.executionId || response.latestExecutionId || null);
       }
     } catch (error: any) {
       addMessage({

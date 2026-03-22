@@ -11,6 +11,7 @@ const intent_engine_1 = require("../services/intent-engine");
 const orchestrator_1 = require("../services/orchestrator");
 const context_engine_1 = require("../services/context-engine");
 const task_decomposer_1 = require("../services/task-decomposer");
+const status_summary_1 = require("../services/status-summary");
 const types_1 = require("../services/types");
 exports.intentRouter = (0, express_1.Router)();
 // In-memory chat history (per session)
@@ -47,7 +48,12 @@ exports.intentRouter.post('/parse', async (req, res) => {
     }
     const plan = (0, task_decomposer_1.createExecutionPlan)(intentResult, context);
     const planPreview = (0, task_decomposer_1.formatPlanPreview)(plan);
-    const detailedDescription = `${description}\n\nExecution plan:\n${planPreview}`;
+    const statusSnapshot = intentResult.intent === types_1.IntentType.STATUS
+        ? await (0, status_summary_1.buildStatusSummary)(context)
+        : undefined;
+    const detailedDescription = statusSnapshot
+        ? statusSnapshot.message
+        : `${description}\n\nExecution plan:\n${planPreview}`;
     // If intent is recognized, trigger the flow
     let executionId;
     if (intentResult.intent !== types_1.IntentType.UNKNOWN && intentResult.intent !== types_1.IntentType.STATUS && intentResult.flow) {
@@ -72,7 +78,9 @@ exports.intentRouter.post('/parse', async (req, res) => {
             intent: intentResult,
             executionId,
             plan,
-            context
+            context,
+            latestExecutionId: statusSnapshot?.latestExecution?.id,
+            latestPipeline: statusSnapshot?.latestPipeline
         }
     };
     chatSessions.get(session).push(systemMessage);
@@ -83,6 +91,8 @@ exports.intentRouter.post('/parse', async (req, res) => {
         plan,
         response: detailedDescription,
         executionId,
+        latestExecutionId: statusSnapshot?.latestExecution?.id,
+        latestPipeline: statusSnapshot?.latestPipeline,
         suggestions: intentResult.intent === types_1.IntentType.UNKNOWN ? (0, intent_engine_1.getSuggestions)() : undefined
     });
 });

@@ -1,0 +1,53 @@
+# Rollback Flow Configuration
+# This flow restores the previous healthy deployment
+
+name: rollback-flow
+version: v1
+description: Roll back to the previous healthy application version
+
+triggers:
+  - type: manual
+    action: rollback
+  - type: webhook
+    endpoint: /api/flows/rollback
+
+stages:
+  - name: identify
+    description: Identify the last healthy release target
+    agent: deploy-agent
+    steps:
+      - name: check-health
+        action: health-check
+        timeout: 120s
+
+  - name: rollback
+    description: Restore the previous release
+    agent: deploy-agent
+    depends_on: identify
+    steps:
+      - name: rollback-release
+        action: rollback
+        timeout: 300s
+
+  - name: verify
+    description: Verify the environment is healthy again
+    agent: deploy-agent
+    depends_on: rollback
+    steps:
+      - name: verify-rollback
+        action: verify
+        timeout: 180s
+      - name: update-status
+        action: update
+        status: rolled-back
+
+error_handling:
+  retry:
+    max_attempts: 2
+    backoff: exponential
+    initial_delay: 30s
+
+output:
+  logs: true
+  metrics: true
+  artifacts: true
