@@ -6,6 +6,8 @@
 import { flowOrchestrator } from './orchestrator';
 import { FlowStatus } from './types';
 
+jest.setTimeout(90000);
+
 describe('Flow Orchestrator', () => {
   it('should execute a simple flow', async () => {
     const result = await flowOrchestrator.executeFlow('test-exec-1', 'deploy-flow', {});

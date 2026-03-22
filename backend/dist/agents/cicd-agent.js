@@ -37,23 +37,31 @@ class CICDAgent extends base_agent_1.BaseAgent {
             if (pipeline) {
                 this.log(execution, 'info', `Pipeline started (ID: ${pipeline.id})`);
                 this.log(execution, 'info', `Status: ${pipeline.status}`);
-                // Simulate pipeline progression
-                await this.work(800);
-                this.log(execution, 'info', 'Pipeline running: Building application...');
-                await this.work(1000);
-                this.log(execution, 'info', 'Pipeline running: Running tests...');
-                await this.work(800);
-                this.log(execution, 'info', 'Pipeline running: Quality checks...');
-                await this.work(500);
                 // Determine outcome based on input (for testing self-healing)
                 const shouldFail = input.simulateFailure === true;
-                const finalStatus = shouldFail ? 'failed' : 'success';
+                let finalPipeline = await gitlab_adapter_1.gitlabAdapter.monitorPipeline(pipeline.id, {
+                    onProgress: current => {
+                        this.log(execution, 'info', `Pipeline status: ${current.status}`);
+                    }
+                });
+                if (shouldFail) {
+                    finalPipeline = {
+                        ...finalPipeline,
+                        status: 'failed',
+                        updatedAt: new Date().toISOString()
+                    };
+                    this.log(execution, 'warn', 'Simulated pipeline failure for debug flow validation');
+                }
+                const finalStatus = finalPipeline.status;
+                const pipelineSummary = this.toPipelineSummary(finalPipeline, 'cicd-agent');
                 this.log(execution, 'info', `Pipeline completed: ${finalStatus}`);
                 return {
                     pipelineId: pipeline.id,
                     status: finalStatus,
                     ref,
-                    url: pipeline.webUrl,
+                    url: finalPipeline.webUrl,
+                    latestPipeline: pipelineSummary,
+                    pipelines: [pipelineSummary],
                     stages: [
                         { name: 'build', status: shouldFail ? 'failed' : 'passed', duration: '45s' },
                         { name: 'test', status: shouldFail ? 'failed' : 'passed', duration: '120s' },
@@ -74,18 +82,21 @@ class CICDAgent extends base_agent_1.BaseAgent {
     async monitorPipeline(input, execution) {
         const pipelineId = input.pipelineId;
         this.log(execution, 'info', `Monitoring pipeline ${pipelineId}...`);
-        await this.work(500);
-        // Simulate monitoring
-        const statuses = ['running', 'running', 'success'];
-        for (const status of statuses) {
-            this.log(execution, 'info', `Pipeline status: ${status}`);
-            await this.work(400);
-        }
+        const pipeline = await gitlab_adapter_1.gitlabAdapter.monitorPipeline(pipelineId, {
+            onProgress: current => {
+                this.log(execution, 'info', `Pipeline status: ${current.status}`);
+            }
+        });
+        const pipelineSummary = this.toPipelineSummary(pipeline, 'cicd-agent');
         return {
             pipelineId,
-            finalStatus: 'success',
+            finalStatus: pipeline.status,
             duration: '3m 15s',
-            userMessage: 'Pipeline completed successfully'
+            latestPipeline: pipelineSummary,
+            pipelines: [pipelineSummary],
+            userMessage: pipeline.status === 'success'
+                ? 'Pipeline completed successfully'
+                : `Pipeline finished with status ${pipeline.status}`
         };
     }
     async fetchResults(input, execution) {
@@ -130,6 +141,17 @@ class CICDAgent extends base_agent_1.BaseAgent {
             tests: { total: 24, passed: 24, failed: 0, skipped: 0 },
             coverage: '87%',
             userMessage: 'All tests passed successfully!'
+        };
+    }
+    toPipelineSummary(pipeline, source) {
+        return {
+            id: pipeline.id,
+            status: pipeline.status,
+            ref: pipeline.ref,
+            url: pipeline.webUrl,
+            provider: 'gitlab',
+            source,
+            updatedAt: pipeline.updatedAt
         };
     }
 }

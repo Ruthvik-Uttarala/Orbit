@@ -7,6 +7,8 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { parseIntent, getIntentDescription, getSuggestions } from '../services/intent-engine';
 import { flowOrchestrator } from '../services/orchestrator';
+import { buildSessionContext } from '../services/context-engine';
+import { createExecutionPlan, formatPlanPreview } from '../services/task-decomposer';
 import { IntentType, ChatMessage, FlowStatus } from '../services/types';
 
 export const intentRouter = Router();
@@ -43,6 +45,19 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
   }
   chatSessions.get(session)!.push(userMessage);
 
+  const context = buildSessionContext(session, chatSessions.get(session)!);
+
+  if (!intentResult.parameters.environment && context.preferredEnvironment) {
+    intentResult.parameters.environment = context.preferredEnvironment;
+  }
+  if (!intentResult.parameters.feature && context.activeFeature && intentResult.intent === IntentType.UPDATE) {
+    intentResult.parameters.feature = context.activeFeature;
+  }
+
+  const plan = createExecutionPlan(intentResult, context);
+  const planPreview = formatPlanPreview(plan);
+  const detailedDescription = `${description}\n\nExecution plan:\n${planPreview}`;
+
   // If intent is recognized, trigger the flow
   let executionId: string | undefined;
   if (intentResult.intent !== IntentType.UNKNOWN && intentResult.intent !== IntentType.STATUS && intentResult.flow) {
@@ -63,11 +78,13 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
   const systemMessage: ChatMessage = {
     id: uuidv4(),
     role: 'system',
-    content: description,
+    content: detailedDescription,
     timestamp: new Date().toISOString(),
     metadata: {
       intent: intentResult,
-      executionId
+      executionId,
+      plan,
+      context
     }
   };
   chatSessions.get(session)!.push(systemMessage);
@@ -75,7 +92,9 @@ intentRouter.post('/parse', async (req: Request, res: Response) => {
   res.json({
     sessionId: session,
     intent: intentResult,
-    response: description,
+    context,
+    plan,
+    response: detailedDescription,
     executionId,
     suggestions: intentResult.intent === IntentType.UNKNOWN ? getSuggestions() : undefined
   });

@@ -68,7 +68,10 @@ deployRouter.get('/status/:id', async (req: Request, res: Response) => {
     logs: displayLogs,
     startTime: execution.startTime,
     endTime: execution.endTime,
-    error: execution.error
+    error: execution.error,
+    result: execution.result,
+    latestPipeline: execution.latestPipeline,
+    pipelines: execution.pipelines
   });
 });
 

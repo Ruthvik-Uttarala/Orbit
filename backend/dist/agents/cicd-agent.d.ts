@@ -7,6 +7,7 @@ export declare class CICDAgent extends BaseAgent {
     private monitorPipeline;
     private fetchResults;
     private runTests;
+    private toPipelineSummary;
 }
 export declare const cicdAgent: CICDAgent;
 //# sourceMappingURL=cicd-agent.d.ts.map

@@ -30,6 +30,31 @@ export interface IntentResult {
   reasoning: string;
 }
 
+export interface SessionContext {
+  sessionId: string;
+  messageCount: number;
+  lastIntent?: IntentType;
+  preferredEnvironment?: string;
+  recentActions: string[];
+  activeFeature?: string;
+}
+
+export interface PlannedTask {
+  id: string;
+  title: string;
+  description: string;
+  agent?: string;
+  dependsOn?: string[];
+  parallelGroup?: string;
+}
+
+export interface ExecutionPlan {
+  summary: string;
+  flowName: string;
+  strategy: 'sequential' | 'parallel';
+  tasks: PlannedTask[];
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'system' | 'agent';
@@ -38,6 +63,8 @@ export interface ChatMessage {
   metadata?: {
     intent?: IntentResult;
     executionId?: string;
+    plan?: ExecutionPlan;
+    context?: SessionContext;
   };
 }
 
@@ -55,6 +82,16 @@ export interface DeployResponse {
   timestamp: string;
 }
 
+export interface IntentResponse {
+  sessionId: string;
+  intent: IntentResult;
+  response: string;
+  executionId?: string;
+  suggestions?: string[];
+  plan?: ExecutionPlan;
+  context?: SessionContext;
+}
+
 export interface ProgressStep {
   stage: string;
   agent: string;
@@ -62,6 +99,17 @@ export interface ProgressStep {
   message?: string;
   timestamp: string;
   duration?: number;
+}
+
+export interface PipelineSummary {
+  id: number;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  ref: string;
+  url: string;
+  provider: 'gitlab';
+  source: 'cicd-agent' | 'deploy-agent';
+  environment?: string;
+  updatedAt: string;
 }
 
 export interface FlowExecution {
@@ -77,7 +125,11 @@ export interface FlowExecution {
     success: boolean;
     message?: string;
     userMessage?: string;
+    latestPipeline?: PipelineSummary;
+    pipelines?: PipelineSummary[];
   };
+  latestPipeline?: PipelineSummary;
+  pipelines?: PipelineSummary[];
 }
 
 export interface Agent {
@@ -119,7 +171,12 @@ export interface OrbitActivity {
   message: string;
   timestamp: string;
   status: 'success' | 'failed' | 'running' | 'pending';
-  details?: Record<string, any>;
+  details?: {
+    executionId?: string;
+    environment?: string;
+    latestPipeline?: PipelineSummary;
+    [key: string]: any;
+  };
 }
 
 // ============================================================
@@ -180,7 +237,7 @@ export const orbitApi = {
   },
 
   // Intent / Chat
-  sendMessage: async (message: string, sessionId?: string) => {
+  sendMessage: async (message: string, sessionId?: string): Promise<IntentResponse> => {
     const response = await api.post('/intent/parse', { message, sessionId });
     return response.data;
   },

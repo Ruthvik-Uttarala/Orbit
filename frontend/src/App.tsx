@@ -151,7 +151,12 @@ function App() {
         role: 'system',
         content: response.response,
         timestamp: new Date().toISOString(),
-        metadata: { intent: response.intent, executionId: response.executionId }
+        metadata: {
+          intent: response.intent,
+          executionId: response.executionId,
+          plan: response.plan,
+          context: response.context
+        }
       });
 
       // Track execution for polling
@@ -274,6 +279,33 @@ function App() {
     return date.toLocaleString();
   };
 
+  const getPlanSummary = (message: ChatMessage) => {
+    return message.metadata?.plan?.summary;
+  };
+
+  const getPlanTasks = (message: ChatMessage) => {
+    return message.metadata?.plan?.tasks || [];
+  };
+
+  const getContextFacts = (message: ChatMessage) => {
+    const context = message.metadata?.context;
+    if (!context) return [];
+
+    const facts: string[] = [];
+
+    if (context.preferredEnvironment) {
+      facts.push(`Env: ${context.preferredEnvironment}`);
+    }
+    if (context.activeFeature) {
+      facts.push(`Feature: ${context.activeFeature}`);
+    }
+    if (context.lastIntent) {
+      facts.push(`Last action: ${context.lastIntent}`);
+    }
+
+    return facts;
+  };
+
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'deploy': return '🚀';
@@ -283,6 +315,8 @@ function App() {
       default: return '•';
     }
   };
+
+  const pipeline = execution?.latestPipeline || execution?.result?.latestPipeline;
 
   return (
     <div className="app">
@@ -503,6 +537,38 @@ function App() {
                   <div className="message-content">
                     {msg.content}
                   </div>
+                  {msg.role === 'system' && getPlanSummary(msg) && (
+                    <div className="message-plan">
+                      <div className="message-plan-header">
+                        <span className="message-plan-title">Orbit plan</span>
+                        {msg.metadata?.plan?.strategy && (
+                          <span className={`status-chip ${msg.metadata.plan.strategy === 'parallel' ? 'info' : 'neutral'}`}>
+                            {msg.metadata.plan.strategy}
+                          </span>
+                        )}
+                      </div>
+                      <p className="message-plan-summary">{getPlanSummary(msg)}</p>
+                      {getContextFacts(msg).length > 0 && (
+                        <div className="message-plan-facts">
+                          {getContextFacts(msg).map((fact, index) => (
+                            <span key={index} className="message-plan-fact">
+                              {fact}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="message-plan-tasks">
+                        {getPlanTasks(msg).slice(0, 5).map((task) => (
+                          <div key={task.id} className="message-plan-task">
+                            <span className="message-plan-step">{task.title}</span>
+                            {task.agent && (
+                              <span className="message-plan-agent">{task.agent}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="message-time">
                     {new Date(msg.timestamp).toLocaleTimeString()}
                   </div>
@@ -545,6 +611,34 @@ function App() {
                     {getStatusIcon(execution.status)} {execution.status}
                   </span>
                 </div>
+
+                {pipeline && (
+                  <div className="pipeline-card">
+                    <div className="pipeline-card-header">
+                      <span className="pipeline-card-title">GitLab pipeline</span>
+                      <span className={`status-chip ${
+                        pipeline.status === 'success'
+                          ? 'success'
+                          : pipeline.status === 'failed' || pipeline.status === 'canceled'
+                            ? 'error'
+                            : pipeline.status === 'running'
+                              ? 'info'
+                              : 'neutral'
+                      }`}>
+                        {pipeline.status}
+                      </span>
+                    </div>
+                    <div className="pipeline-card-meta">
+                      <span>#{pipeline.id}</span>
+                      <span>{pipeline.source}</span>
+                      <span>{pipeline.ref}</span>
+                      {pipeline.environment && <span>{pipeline.environment}</span>}
+                    </div>
+                    <a className="pipeline-card-link" href={pipeline.url} target="_blank" rel="noreferrer">
+                      Open pipeline
+                    </a>
+                  </div>
+                )}
                 
                 {/* Progress */}
                 <div className="progress-steps">

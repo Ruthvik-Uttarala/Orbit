@@ -68,6 +68,8 @@ export interface FlowExecution {
   error?: string;
   retryCount?: number;
   intent?: IntentResult;
+  latestPipeline?: PipelineSummary;
+  pipelines?: PipelineSummary[];
 }
 
 // Log entry with structured data
@@ -86,6 +88,8 @@ export interface FlowResult {
   artifacts?: string[];
   message?: string;
   userMessage?: string; // Plain English message for the user
+  latestPipeline?: PipelineSummary;
+  pipelines?: PipelineSummary[];
 }
 
 // Agent execution
@@ -128,6 +132,34 @@ export interface IntentResult {
   reasoning: string;
 }
 
+// Session-aware context built from recent chat history
+export interface SessionContext {
+  sessionId: string;
+  messageCount: number;
+  lastIntent?: IntentType;
+  preferredEnvironment?: string;
+  recentActions: string[];
+  activeFeature?: string;
+}
+
+// Decomposed execution task derived from an intent
+export interface PlannedTask {
+  id: string;
+  title: string;
+  description: string;
+  agent?: string;
+  dependsOn?: string[];
+  parallelGroup?: string;
+}
+
+// High-level execution plan returned to the UI and orchestrator callers
+export interface ExecutionPlan {
+  summary: string;
+  flowName: string;
+  strategy: 'sequential' | 'parallel';
+  tasks: PlannedTask[];
+}
+
 // Chat message
 export interface ChatMessage {
   id: string;
@@ -138,6 +170,8 @@ export interface ChatMessage {
     intent?: IntentResult;
     executionId?: string;
     agentType?: string;
+    plan?: ExecutionPlan;
+    context?: SessionContext;
   };
 }
 
@@ -148,6 +182,17 @@ export interface GitLabPipeline {
   ref: string;
   webUrl: string;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface PipelineSummary {
+  id: number;
+  status: GitLabPipeline['status'];
+  ref: string;
+  url: string;
+  provider: 'gitlab';
+  source: 'cicd-agent' | 'deploy-agent';
+  environment?: string;
   updatedAt: string;
 }
 

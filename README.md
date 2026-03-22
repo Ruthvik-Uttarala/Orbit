@@ -23,8 +23,7 @@ Orbit is an intelligent DevOps platform that abstracts technical workflow into i
 orbit-devops/
 ├── .gitlab/                    # GitLab configurations
 │   ├── agents/                 # GitLab Agent configurations
-│   │   └── orbit-agent/       # Main agent config
-│   └── ci-access/             # CI access configuration
+│   │   └── orbit-deploy-agent/ # Main deployment agent config
 ├── backend/                   # Backend API server
 │   ├── src/
 │   │   ├── agents/            # Agent implementations
@@ -34,8 +33,6 @@ orbit-devops/
 │   └── package.json
 ├── frontend/                  # React frontend (Orbit v1 UI)
 │   ├── src/
-│   │   ├── components/        # UI components
-│   │   ├── pages/             # Page components
 │   │   ├── services/          # API services
 │   │   └── App.tsx            # Main app
 │   └── package.json
@@ -52,7 +49,7 @@ orbit-devops/
 - MIT License and README present
 - `.gitlab-ci.yml` configured
 - GitLab Agent Platform activated
-- First working agent (`orbit-agent`) configured
+- First working agent (`orbit-deploy-agent`) configured
 - First working flow (`deploy-flow`) configured
 - Basic Orbit v1 UI with Deploy action
 
@@ -95,7 +92,7 @@ Create `.env` files in `backend/` and `frontend/` directories:
 ```
 GITLAB_TOKEN=your_gitlab_token
 GITLAB_PROJECT_ID=your_project_id
-GITLAB_AGENT=orbit-agent
+GITLAB_AGENT=orbit-deploy-agent
 PORT=3001
 ```
 
@@ -130,11 +127,8 @@ npm start
 ### Building
 
 ```bash
-# Build frontend
-cd frontend && npm run build
-
-# Backend production build
-cd backend && npm run build
+# Build both frontend and backend from the repo root
+npm run build
 ```
 
 ## API Endpoints
@@ -151,7 +145,7 @@ cd backend && npm run build
 
 ### Agent Configuration
 
-The GitLab Agent (`orbit-agent`) is configured in `.gitlab/agents/orbit-agent/config.yaml` and handles:
+The GitLab deploy agent (`orbit-deploy-agent`) is configured in `.gitlab/agents/orbit-deploy-agent/config.yaml` and handles:
 - Kubernetes namespace management
 - CI/CD pipeline coordination
 - Resource synchronization

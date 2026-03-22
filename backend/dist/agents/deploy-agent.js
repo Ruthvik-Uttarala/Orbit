@@ -35,6 +35,7 @@ class DeployAgent extends base_agent_1.BaseAgent {
         this.log(execution, 'info', 'Preparing deployment package...');
         await this.work(600);
         this.log(execution, 'info', 'Triggering deployment pipeline...');
+        let deploymentPipeline;
         try {
             const pipeline = await gitlab_adapter_1.gitlabAdapter.triggerPipeline('main', {
                 DEPLOY_ENV: environment,
@@ -43,6 +44,15 @@ class DeployAgent extends base_agent_1.BaseAgent {
             });
             if (pipeline) {
                 this.log(execution, 'info', `Deployment pipeline started (ID: ${pipeline.id})`);
+                const finalPipeline = await gitlab_adapter_1.gitlabAdapter.monitorPipeline(pipeline.id, {
+                    onProgress: current => {
+                        this.log(execution, 'info', `Deployment pipeline status: ${current.status}`);
+                    }
+                });
+                deploymentPipeline = this.toPipelineSummary(finalPipeline, environment);
+                if (finalPipeline.status !== 'success') {
+                    throw new Error(`Deployment pipeline finished with status ${finalPipeline.status}`);
+                }
             }
         }
         catch (error) {
@@ -60,6 +70,8 @@ class DeployAgent extends base_agent_1.BaseAgent {
             version,
             timestamp: new Date().toISOString(),
             url: `https://${environment === 'production' ? '' : environment + '.'}orbit-app.example.com`,
+            latestPipeline: deploymentPipeline,
+            pipelines: deploymentPipeline ? [deploymentPipeline] : [],
             userMessage: `Your app has been deployed to ${environment}! It's now live and ready to use.`
         };
     }
@@ -110,6 +122,18 @@ class DeployAgent extends base_agent_1.BaseAgent {
             uptime: '99.9%',
             responseTime: '45ms',
             userMessage: `${environment} is healthy and running normally.`
+        };
+    }
+    toPipelineSummary(pipeline, environment) {
+        return {
+            id: pipeline.id,
+            status: pipeline.status,
+            ref: pipeline.ref,
+            url: pipeline.webUrl,
+            provider: 'gitlab',
+            source: 'deploy-agent',
+            environment,
+            updatedAt: pipeline.updatedAt
         };
     }
 }

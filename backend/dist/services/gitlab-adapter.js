@@ -111,6 +111,40 @@ class GitLabAdapter {
             ...parameters
         });
     }
+    async monitorPipeline(pipelineId, options = {}) {
+        const pollIntervalMs = options.pollIntervalMs ?? 1500;
+        const timeoutMs = options.timeoutMs ?? 30000;
+        if (!this.isConfigured()) {
+            const mockStates = ['pending', 'running', 'success'];
+            let pipeline = this.mockPipeline(mockStates[0]);
+            options.onProgress?.(pipeline);
+            for (const state of mockStates.slice(1)) {
+                await new Promise(resolve => setTimeout(resolve, Math.min(pollIntervalMs, 500)));
+                pipeline = {
+                    ...pipeline,
+                    status: state,
+                    updatedAt: new Date().toISOString()
+                };
+                options.onProgress?.(pipeline);
+            }
+            return pipeline;
+        }
+        const startedAt = Date.now();
+        while (true) {
+            const pipeline = await this.getPipelineStatus(pipelineId);
+            if (!pipeline) {
+                throw new Error(`Pipeline ${pipelineId} not found`);
+            }
+            options.onProgress?.(pipeline);
+            if (pipeline.status === 'success' || pipeline.status === 'failed' || pipeline.status === 'canceled') {
+                return pipeline;
+            }
+            if (Date.now() - startedAt > timeoutMs) {
+                throw new Error(`Timed out waiting for pipeline ${pipelineId}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+    }
     mockPipeline(status) {
         return {
             id: Math.floor(Math.random() * 10000),

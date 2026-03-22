@@ -10,6 +10,11 @@ export declare class GitLabAdapter {
     getPipelineJobs(pipelineId: number): Promise<any[]>;
     getJobLogs(jobId: number): Promise<string>;
     triggerAgentFlow(flowName: string, parameters: Record<string, any>): Promise<any>;
+    monitorPipeline(pipelineId: number, options?: {
+        pollIntervalMs?: number;
+        timeoutMs?: number;
+        onProgress?: (pipeline: GitLabPipeline) => void;
+    }): Promise<GitLabPipeline>;
     private mockPipeline;
 }
 export declare const gitlabAdapter: GitLabAdapter;

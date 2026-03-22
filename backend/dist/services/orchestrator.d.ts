@@ -1,6 +1,7 @@
 import { FlowExecution, FlowResult } from './types';
 declare class FlowOrchestrator {
     private executions;
+    private mergeExecutionOutput;
     /**
      * Create a structured log entry
      */

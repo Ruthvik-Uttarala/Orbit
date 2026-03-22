@@ -7,6 +7,7 @@ export declare class DeployAgent extends BaseAgent {
     private verifyDeployment;
     private rollback;
     private healthCheck;
+    private toPipelineSummary;
 }
 export declare const deployAgent: DeployAgent;
 //# sourceMappingURL=deploy-agent.d.ts.map

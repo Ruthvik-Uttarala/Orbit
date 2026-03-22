@@ -127,6 +127,10 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
             activities[activityIndex].status = result.success ? 'success' : 'failed';
             activities[activityIndex].message = result.userMessage ||
                 (result.success ? `Deployment to ${targetEnv} completed successfully` : 'Deployment failed');
+            activities[activityIndex].details = {
+                ...activities[activityIndex].details,
+                latestPipeline: result.latestPipeline
+            };
         }
         console.log(`[Orbit] Deployment ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
     }).catch(error => {
@@ -276,7 +280,9 @@ exports.orbitRouter.get('/execution/:id', async (req, res) => {
         startTime: execution.startTime,
         endTime: execution.endTime,
         error: execution.error,
-        result: execution.result
+        result: execution.result,
+        latestPipeline: execution.latestPipeline,
+        pipelines: execution.pipelines
     });
 });
 //# sourceMappingURL=orbit.js.map

@@ -9,6 +9,8 @@ const express_1 = require("express");
 const uuid_1 = require("uuid");
 const intent_engine_1 = require("../services/intent-engine");
 const orchestrator_1 = require("../services/orchestrator");
+const context_engine_1 = require("../services/context-engine");
+const task_decomposer_1 = require("../services/task-decomposer");
 const types_1 = require("../services/types");
 exports.intentRouter = (0, express_1.Router)();
 // In-memory chat history (per session)
@@ -36,6 +38,16 @@ exports.intentRouter.post('/parse', async (req, res) => {
         chatSessions.set(session, []);
     }
     chatSessions.get(session).push(userMessage);
+    const context = (0, context_engine_1.buildSessionContext)(session, chatSessions.get(session));
+    if (!intentResult.parameters.environment && context.preferredEnvironment) {
+        intentResult.parameters.environment = context.preferredEnvironment;
+    }
+    if (!intentResult.parameters.feature && context.activeFeature && intentResult.intent === types_1.IntentType.UPDATE) {
+        intentResult.parameters.feature = context.activeFeature;
+    }
+    const plan = (0, task_decomposer_1.createExecutionPlan)(intentResult, context);
+    const planPreview = (0, task_decomposer_1.formatPlanPreview)(plan);
+    const detailedDescription = `${description}\n\nExecution plan:\n${planPreview}`;
     // If intent is recognized, trigger the flow
     let executionId;
     if (intentResult.intent !== types_1.IntentType.UNKNOWN && intentResult.intent !== types_1.IntentType.STATUS && intentResult.flow) {
@@ -54,18 +66,22 @@ exports.intentRouter.post('/parse', async (req, res) => {
     const systemMessage = {
         id: (0, uuid_1.v4)(),
         role: 'system',
-        content: description,
+        content: detailedDescription,
         timestamp: new Date().toISOString(),
         metadata: {
             intent: intentResult,
-            executionId
+            executionId,
+            plan,
+            context
         }
     };
     chatSessions.get(session).push(systemMessage);
     res.json({
         sessionId: session,
         intent: intentResult,
-        response: description,
+        context,
+        plan,
+        response: detailedDescription,
         executionId,
         suggestions: intentResult.intent === types_1.IntentType.UNKNOWN ? (0, intent_engine_1.getSuggestions)() : undefined
     });

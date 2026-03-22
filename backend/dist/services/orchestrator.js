@@ -48,6 +48,26 @@ class FlowOrchestrator {
     constructor() {
         this.executions = new Map();
     }
+    mergeExecutionOutput(execution, output) {
+        if (!output) {
+            return;
+        }
+        execution.result = execution.result || { success: true, output: {} };
+        execution.result.output = {
+            ...(execution.result.output || {}),
+            ...output
+        };
+        const pipelines = output.pipelines || [];
+        const latestPipeline = output.latestPipeline || pipelines[pipelines.length - 1];
+        if (pipelines.length > 0) {
+            execution.pipelines = [...(execution.pipelines || []), ...pipelines];
+            execution.result.pipelines = execution.pipelines;
+        }
+        if (latestPipeline) {
+            execution.latestPipeline = latestPipeline;
+            execution.result.latestPipeline = latestPipeline;
+        }
+    }
     /**
      * Create a structured log entry
      */
@@ -139,23 +159,33 @@ class FlowOrchestrator {
             }
             execution.status = types_1.FlowStatus.COMPLETED;
             execution.endTime = new Date().toISOString();
-            return {
+            execution.result = {
                 success: true,
                 message: 'All steps completed successfully',
                 userMessage: this.getUserMessage(flowName, true),
-                output: { parameters }
+                output: {
+                    ...(execution.result?.output || {}),
+                    parameters
+                },
+                latestPipeline: execution.latestPipeline,
+                pipelines: execution.pipelines
             };
+            return execution.result;
         }
         catch (error) {
             execution.status = types_1.FlowStatus.FAILED;
             execution.endTime = new Date().toISOString();
             execution.error = error.message;
             execution.logs.push(this.createLog(`Flow failed: ${error.message}`, 'error'));
-            return {
+            execution.result = {
                 success: false,
                 message: error.message,
-                userMessage: this.getUserMessage(flowName, false, error.message)
+                userMessage: this.getUserMessage(flowName, false, error.message),
+                output: execution.result?.output,
+                latestPipeline: execution.latestPipeline,
+                pipelines: execution.pipelines
             };
+            return execution.result;
         }
     }
     /**
@@ -296,6 +326,7 @@ class FlowOrchestrator {
                 if (result.status === 'failed') {
                     throw new Error(result.error || `${stageDef.name} failed`);
                 }
+                this.mergeExecutionOutput(execution, result.output);
                 step.status = 'completed';
                 step.duration = Date.now() - new Date(step.timestamp).getTime();
                 step.message = result.output?.userMessage || `${stageDef.name} completed`;
@@ -315,21 +346,36 @@ class FlowOrchestrator {
                     execution.status = types_1.FlowStatus.FAILED;
                     execution.endTime = new Date().toISOString();
                     execution.error = error.message;
+                    execution.result = {
+                        success: false,
+                        message: error.message,
+                        userMessage: `Something went wrong during "${stageDef.name}". ${error.message}`,
+                        output: execution.result?.output,
+                        latestPipeline: execution.latestPipeline,
+                        pipelines: execution.pipelines
+                    };
                     return {
                         success: false,
                         message: error.message,
-                        userMessage: `Something went wrong during "${stageDef.name}". ${error.message}`
+                        userMessage: `Something went wrong during "${stageDef.name}". ${error.message}`,
+                        output: execution.result?.output,
+                        latestPipeline: execution.latestPipeline,
+                        pipelines: execution.pipelines
                     };
                 }
             }
         }
         execution.status = types_1.FlowStatus.COMPLETED;
         execution.endTime = new Date().toISOString();
-        return {
+        execution.result = {
             success: true,
             message: 'All stages completed successfully',
-            userMessage: this.getUserMessage(execution.flowName, true)
+            userMessage: this.getUserMessage(execution.flowName, true),
+            output: execution.result?.output,
+            latestPipeline: execution.latestPipeline,
+            pipelines: execution.pipelines
         };
+        return execution.result;
     }
     /**
      * Execute a stage from YAML flow definition through the appropriate agent
@@ -356,6 +402,7 @@ class FlowOrchestrator {
             for (const log of result.logs) {
                 execution.logs.push(log);
             }
+            this.mergeExecutionOutput(execution, result.output);
             if (result.status === 'failed') {
                 throw new Error(result.error || `Step ${step.name} failed`);
             }

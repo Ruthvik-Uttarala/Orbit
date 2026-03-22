@@ -4,7 +4,7 @@
 // ============================================================
 
 import { BaseAgent } from './base-agent';
-import { AgentType, AgentExecution } from '../services/types';
+import { AgentType, AgentExecution, PipelineSummary } from '../services/types';
 import { gitlabAdapter } from '../services/gitlab-adapter';
 
 export class DeployAgent extends BaseAgent {
@@ -45,7 +45,8 @@ export class DeployAgent extends BaseAgent {
     await this.work(600);
 
     this.log(execution, 'info', 'Triggering deployment pipeline...');
-    
+    let deploymentPipeline: PipelineSummary | undefined;
+
     try {
       const pipeline = await gitlabAdapter.triggerPipeline('main', {
         DEPLOY_ENV: environment,
@@ -55,6 +56,17 @@ export class DeployAgent extends BaseAgent {
 
       if (pipeline) {
         this.log(execution, 'info', `Deployment pipeline started (ID: ${pipeline.id})`);
+        const finalPipeline = await gitlabAdapter.monitorPipeline(pipeline.id, {
+          onProgress: current => {
+            this.log(execution, 'info', `Deployment pipeline status: ${current.status}`);
+          }
+        });
+
+        deploymentPipeline = this.toPipelineSummary(finalPipeline, environment);
+
+        if (finalPipeline.status !== 'success') {
+          throw new Error(`Deployment pipeline finished with status ${finalPipeline.status}`);
+        }
       }
     } catch (error) {
       this.log(execution, 'warn', `GitLab pipeline trigger: ${(error as Error).message}. Using local deployment path.`);
@@ -75,6 +87,8 @@ export class DeployAgent extends BaseAgent {
       version,
       timestamp: new Date().toISOString(),
       url: `https://${environment === 'production' ? '' : environment + '.'}orbit-app.example.com`,
+      latestPipeline: deploymentPipeline,
+      pipelines: deploymentPipeline ? [deploymentPipeline] : [],
       userMessage: `Your app has been deployed to ${environment}! It's now live and ready to use.`
     };
   }
@@ -140,6 +154,22 @@ export class DeployAgent extends BaseAgent {
       uptime: '99.9%',
       responseTime: '45ms',
       userMessage: `${environment} is healthy and running normally.`
+    };
+  }
+
+  private toPipelineSummary(
+    pipeline: { id: number; status: PipelineSummary['status']; ref: string; webUrl: string; updatedAt: string },
+    environment: string
+  ): PipelineSummary {
+    return {
+      id: pipeline.id,
+      status: pipeline.status,
+      ref: pipeline.ref,
+      url: pipeline.webUrl,
+      provider: 'gitlab',
+      source: 'deploy-agent',
+      environment,
+      updatedAt: pipeline.updatedAt
     };
   }
 }
