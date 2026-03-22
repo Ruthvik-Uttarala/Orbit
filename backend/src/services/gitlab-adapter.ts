@@ -205,7 +205,7 @@ export class GitLabAdapter {
     }
   }
 
-  private mockPipeline(status: 'pending' | 'running' | 'success' | 'failed' | 'canceled'): GitLabPipeline {
+  private mockPipeline(status: 'created' | 'pending' | 'running' | 'success' | 'failed' | 'canceled'): GitLabPipeline {
     const { projectId, ref } = this.getConfig();
 
     return {

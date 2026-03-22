@@ -32,6 +32,21 @@ function App() {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const hasActivePipeline = useCallback((flowExecution: FlowExecution | null) => {
+    const latestPipeline = flowExecution?.latestPipeline || flowExecution?.result?.latestPipeline;
+    return latestPipeline?.status === 'created'
+      || latestPipeline?.status === 'pending'
+      || latestPipeline?.status === 'running';
+  }, []);
+
+  const getDisplayExecutionStatus = useCallback((flowExecution: FlowExecution | null) => {
+    if (hasActivePipeline(flowExecution)) {
+      return 'running';
+    }
+
+    return flowExecution?.status || 'pending';
+  }, [hasActivePipeline]);
+
   // Check health and load data on mount
   useEffect(() => {
     loadOrbitStatus();
@@ -48,13 +63,15 @@ function App() {
         const status = await orbitApi.getExecutionStatus(currentExecutionId);
         setExecution(status);
 
-        if (status.status === 'completed' || status.status === 'failed') {
+        const displayStatus = getDisplayExecutionStatus(status);
+
+        if (displayStatus === 'completed' || displayStatus === 'failed') {
           clearInterval(interval);
           
           // Update quick action status
-          setQuickAction(status.status === 'completed' ? 'success' : 'error');
+          setQuickAction(displayStatus === 'completed' ? 'success' : 'error');
           setQuickActionMessage(status.result?.userMessage || 
-            (status.status === 'completed' ? 'Operation completed!' : 'Operation failed'));
+            (displayStatus === 'completed' ? 'Operation completed!' : 'Operation failed'));
           
           // Reload activities
           loadActivities();
@@ -72,7 +89,7 @@ function App() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [currentExecutionId]);
+  }, [currentExecutionId, getDisplayExecutionStatus]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -317,6 +334,7 @@ function App() {
   };
 
   const pipeline = execution?.latestPipeline || execution?.result?.latestPipeline;
+  const executionDisplayStatus = getDisplayExecutionStatus(execution);
 
   return (
     <div className="app">
@@ -606,9 +624,9 @@ function App() {
                   <span className="execution-name">{execution.flowName}</span>
                   <span 
                     className="execution-status"
-                    style={{ color: getStatusColor(execution.status) }}
+                    style={{ color: getStatusColor(executionDisplayStatus) }}
                   >
-                    {getStatusIcon(execution.status)} {execution.status}
+                    {getStatusIcon(executionDisplayStatus)} {executionDisplayStatus}
                   </span>
                 </div>
 

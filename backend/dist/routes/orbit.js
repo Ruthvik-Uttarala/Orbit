@@ -14,6 +14,11 @@ const agents_1 = require("../agents");
 exports.orbitRouter = (0, express_1.Router)();
 // In-memory activity storage (in production, use a database)
 const activities = [];
+function hasActivePipeline(result) {
+    const latestPipelineStatus = result?.latestPipeline?.status;
+    const pipelinePending = result?.output?.pipelinePending;
+    return pipelinePending === true || latestPipelineStatus === 'pending' || latestPipelineStatus === 'running' || latestPipelineStatus === 'created';
+}
 // Add activity helper
 function addActivity(type, message, status, details) {
     const activity = {
@@ -124,9 +129,14 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
         // Update activity status
         const activityIndex = activities.findIndex(a => a.id === activity.id);
         if (activityIndex !== -1) {
-            activities[activityIndex].status = result.success ? 'success' : 'failed';
+            const pipelineActive = hasActivePipeline(result);
+            activities[activityIndex].status = pipelineActive ? 'running' : (result.success ? 'success' : 'failed');
             activities[activityIndex].message = result.userMessage ||
-                (result.success ? `Deployment to ${targetEnv} completed successfully` : 'Deployment failed');
+                (pipelineActive
+                    ? `Deployment pipeline for ${targetEnv} is still running`
+                    : result.success
+                        ? `Deployment to ${targetEnv} completed successfully`
+                        : 'Deployment failed');
             activities[activityIndex].details = {
                 ...activities[activityIndex].details,
                 latestPipeline: result.latestPipeline

@@ -48,6 +48,27 @@ class FlowOrchestrator {
     constructor() {
         this.executions = new Map();
     }
+    hasActivePipeline(execution) {
+        const latestPipeline = execution.latestPipeline;
+        const pipelinePending = execution.result?.output?.pipelinePending;
+        if (pipelinePending) {
+            return true;
+        }
+        return latestPipeline?.status === 'pending'
+            || latestPipeline?.status === 'running'
+            || latestPipeline?.status === 'created';
+    }
+    createRunningPipelineResult(execution) {
+        return {
+            success: true,
+            message: 'Waiting for GitLab pipeline to finish',
+            userMessage: execution.result?.output?.userMessage
+                || 'Your GitLab pipeline is still running. Follow the pipeline card for live progress.',
+            output: execution.result?.output,
+            latestPipeline: execution.latestPipeline,
+            pipelines: execution.pipelines
+        };
+    }
     mergeExecutionOutput(execution, output) {
         if (!output) {
             return;
@@ -137,6 +158,13 @@ class FlowOrchestrator {
                 execution.logs.push(this.createLog(`Starting stage: ${stage.name}`, 'info', stage.agent));
                 try {
                     await this.executeStage(stage, parameters, execution);
+                    if (this.hasActivePipeline(execution)) {
+                        step.status = 'running';
+                        step.message = execution.result?.output?.userMessage || 'Waiting for GitLab pipeline';
+                        execution.status = types_1.FlowStatus.RUNNING;
+                        execution.result = this.createRunningPipelineResult(execution);
+                        return execution.result;
+                    }
                     step.status = 'completed';
                     step.duration = Date.now() - new Date(step.timestamp).getTime();
                     execution.logs.push(this.createLog(`Completed stage: ${stage.name}`, 'info', stage.agent));
@@ -327,6 +355,13 @@ class FlowOrchestrator {
                     throw new Error(result.error || `${stageDef.name} failed`);
                 }
                 this.mergeExecutionOutput(execution, result.output);
+                if (this.hasActivePipeline(execution)) {
+                    step.status = 'running';
+                    step.message = result.output?.userMessage || 'Waiting for GitLab pipeline';
+                    execution.status = types_1.FlowStatus.RUNNING;
+                    execution.result = this.createRunningPipelineResult(execution);
+                    return execution.result;
+                }
                 step.status = 'completed';
                 step.duration = Date.now() - new Date(step.timestamp).getTime();
                 step.message = result.output?.userMessage || `${stageDef.name} completed`;
@@ -405,6 +440,9 @@ class FlowOrchestrator {
             this.mergeExecutionOutput(execution, result.output);
             if (result.status === 'failed') {
                 throw new Error(result.error || `Step ${step.name} failed`);
+            }
+            if (this.hasActivePipeline(execution)) {
+                return;
             }
         }
     }

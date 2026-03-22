@@ -14,6 +14,32 @@ import { debugAgent } from '../agents/debug-agent';
 class FlowOrchestrator {
   private executions: Map<string, FlowExecution> = new Map();
 
+  private hasActivePipeline(execution: FlowExecution): boolean {
+    const latestPipeline = execution.latestPipeline;
+    const pipelinePending = execution.result?.output?.pipelinePending;
+
+    if (pipelinePending) {
+      return true;
+    }
+
+    return latestPipeline?.status === 'pending'
+      || latestPipeline?.status === 'running'
+      || latestPipeline?.status === 'created';
+  }
+
+  private createRunningPipelineResult(execution: FlowExecution): FlowResult {
+    return {
+      success: true,
+      message: 'Waiting for GitLab pipeline to finish',
+      userMessage:
+        execution.result?.output?.userMessage
+        || 'Your GitLab pipeline is still running. Follow the pipeline card for live progress.',
+      output: execution.result?.output,
+      latestPipeline: execution.latestPipeline,
+      pipelines: execution.pipelines
+    };
+  }
+
   private mergeExecutionOutput(execution: FlowExecution, output?: Record<string, any>): void {
     if (!output) {
       return;
@@ -118,6 +144,15 @@ class FlowOrchestrator {
 
         try {
           await this.executeStage(stage, parameters, execution);
+
+          if (this.hasActivePipeline(execution)) {
+            step.status = 'running';
+            step.message = execution.result?.output?.userMessage || 'Waiting for GitLab pipeline';
+            execution.status = FlowStatus.RUNNING;
+            execution.result = this.createRunningPipelineResult(execution);
+            return execution.result;
+          }
+
           step.status = 'completed';
           step.duration = Date.now() - new Date(step.timestamp).getTime();
           execution.logs.push(this.createLog(`Completed stage: ${stage.name}`, 'info', stage.agent));
@@ -344,6 +379,15 @@ class FlowOrchestrator {
         }
 
         this.mergeExecutionOutput(execution, result.output);
+
+        if (this.hasActivePipeline(execution)) {
+          step.status = 'running';
+          step.message = result.output?.userMessage || 'Waiting for GitLab pipeline';
+          execution.status = FlowStatus.RUNNING;
+          execution.result = this.createRunningPipelineResult(execution);
+          return execution.result;
+        }
+
         step.status = 'completed';
         step.duration = Date.now() - new Date(step.timestamp).getTime();
         step.message = result.output?.userMessage || `${stageDef.name} completed`;
@@ -430,6 +474,10 @@ class FlowOrchestrator {
 
       if (result.status === 'failed') {
         throw new Error(result.error || `Step ${step.name} failed`);
+      }
+
+      if (this.hasActivePipeline(execution)) {
+        return;
       }
     }
   }

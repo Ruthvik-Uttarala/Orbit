@@ -22,6 +22,13 @@ const activities: Array<{
   details?: Record<string, any>;
 }> = [];
 
+function hasActivePipeline(result?: { latestPipeline?: { status?: string }; output?: Record<string, any> }): boolean {
+  const latestPipelineStatus = result?.latestPipeline?.status;
+  const pipelinePending = result?.output?.pipelinePending;
+
+  return pipelinePending === true || latestPipelineStatus === 'pending' || latestPipelineStatus === 'running' || latestPipelineStatus === 'created';
+}
+
 // Add activity helper
 function addActivity(type: string, message: string, status: 'success' | 'failed' | 'running' | 'pending', details?: Record<string, any>) {
   const activity = {
@@ -149,9 +156,15 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
     // Update activity status
     const activityIndex = activities.findIndex(a => a.id === activity.id);
     if (activityIndex !== -1) {
-      activities[activityIndex].status = result.success ? 'success' : 'failed';
+      const pipelineActive = hasActivePipeline(result);
+
+      activities[activityIndex].status = pipelineActive ? 'running' : (result.success ? 'success' : 'failed');
       activities[activityIndex].message = result.userMessage || 
-        (result.success ? `Deployment to ${targetEnv} completed successfully` : 'Deployment failed');
+        (pipelineActive
+          ? `Deployment pipeline for ${targetEnv} is still running`
+          : result.success
+            ? `Deployment to ${targetEnv} completed successfully`
+            : 'Deployment failed');
       activities[activityIndex].details = {
         ...activities[activityIndex].details,
         latestPipeline: result.latestPipeline

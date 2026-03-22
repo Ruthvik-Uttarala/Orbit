@@ -178,7 +178,7 @@ export interface ChatMessage {
 // GitLab pipeline status
 export interface GitLabPipeline {
   id: number;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  status: 'created' | 'pending' | 'running' | 'success' | 'failed' | 'canceled';
   ref: string;
   webUrl: string;
   createdAt: string;

@@ -103,7 +103,7 @@ export interface ProgressStep {
 
 export interface PipelineSummary {
   id: number;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  status: 'created' | 'pending' | 'running' | 'success' | 'failed' | 'canceled';
   ref: string;
   url: string;
   provider: 'gitlab';
