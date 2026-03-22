@@ -192,22 +192,25 @@ Current meaning of deploy:
 Current meaning of deploy is **not**:
 - the app is automatically published to a public internet-facing production target
 
-### B. CI currently expects a `macos` runner
-Current `.gitlab-ci.yml` has:
-- `default.tags: [macos]`
+### B. CI is now runner-neutral
+Current `.gitlab-ci.yml` does **not** require a platform-specific runner tag anymore.
 
-This was done to move the project off GitLab shared-runner minutes.
+Why this matters:
+- Rutvik is on Windows
+- Vayu is on macOS
+- both machines can run the same pipeline jobs as long as their project runners are configured to **Run untagged jobs**
 
-Consequence:
-- pipelines now expect an online project runner tagged `macos`
-- if that runner is offline, pipelines will wait or fail to start
+Recommended setup:
+- use **project runners**
+- turn **Run untagged jobs** ON
+- disable GitLab shared runners for the project if the team wants to avoid shared-minute usage
 
-### C. The current private runner is on Vayu’s machine
+### C. The current private runner may still be on Vayu’s machine
 That means:
 - if Vayu’s Mac is off, GitLab jobs may stop running
 - Rutvik should either:
-  - register his own project runner with the `macos` tag, or
-  - temporarily remove the `macos` tag from `.gitlab-ci.yml` and go back to shared runners (only if compute minutes allow)
+  - register his own project runner on Windows with **Run untagged jobs** enabled, or
+  - temporarily use shared runners again (only if compute minutes allow)
 
 ### D. Local backend needs a personal access token
 For local GitLab-backed actions, `backend/.env` needs:
@@ -251,6 +254,37 @@ cd backend && npm install
 cd ../frontend && npm install
 ```
 
+### Windows note
+Rutvik can run the project from:
+- **PowerShell**
+- **Windows Terminal**
+- **Git Bash**
+
+PowerShell is the simplest recommendation.
+
+## 8A. Windows prerequisites for Rutvik
+
+Rutvik should install these first:
+
+1. **Node.js 18 or newer**
+2. **Git for Windows**
+3. **npm** (comes with Node.js)
+
+Optional:
+4. **Docker Desktop**
+
+Docker is **not required** for local development of Orbit.
+
+Rutvik does **not** need Vayu’s Docker container, image, or local Docker environment to run the app locally.
+
+For Orbit local development, the important dependencies are:
+- Node.js
+- npm
+- Git
+- a GitLab personal access token
+
+Docker only matters if Rutvik personally wants it for separate experiments or wants to set up a Docker-based GitLab runner later.
+
 ### Step 3 - Local environment setup on Rutvik’s machine
 Rutvik should create:
 - `/path/to/Orbit/backend/.env`
@@ -280,16 +314,57 @@ Expected local URLs:
 - UI: `http://localhost:3000`
 - backend health: `http://localhost:3001/api/health`
 
+### PowerShell-friendly version
+
+If Rutvik wants explicit Windows/PowerShell commands, use:
+
+```powershell
+git clone https://gitlab.com/tmushd/Orbit.git
+Set-Location Orbit
+git fetch --all
+git switch hackathon-mvp
+npm install
+Set-Location backend
+npm install
+Set-Location ..\\frontend
+npm install
+Set-Location ..
+npm run dev
+```
+
+If ports are already busy on Windows:
+
+```powershell
+netstat -ano | findstr :3000
+netstat -ano | findstr :3001
+taskkill /PID <PID> /F
+```
+
 ### Step 5 - Runner setup on Rutvik’s machine
 If Rutvik needs pipelines to run without depending on Vayu’s Mac:
 
 1. GitLab project -> **Settings -> CI/CD -> Runners**
 2. Create a **project runner**
-3. Use tag: `macos`
+3. Turn **Run untagged jobs** ON
 4. Register it on his machine using `gitlab-runner`
 5. Confirm it appears online in GitLab
 
-If only one runner is kept, make sure at least one `macos` runner is online at all times.
+If only one private runner is kept, make sure at least one machine with that runner is online at all times.
+
+### Recommended Windows runner setup
+
+Rutvik does **not** need Docker for the runner unless he wants a Docker executor.
+
+Simplest recommendation:
+- install **GitLab Runner for Windows**
+- register a **shell executor** runner
+- keep **Run untagged jobs** enabled
+
+That is enough for this project because the pipeline jobs are Node/npm based.
+
+### Very important runner note
+
+If the team disables shared runners in GitLab, then at least one private project runner must be online or pipelines will not start.
 
 ## 9. What to test first on Rutvik’s machine
 
@@ -315,7 +390,7 @@ This is the recommended catch-up verification order.
 
 ### GitLab verification
 - confirm a new pipeline appears for `hackathon-mvp`
-- confirm the pipeline uses a `macos` runner
+- confirm the pipeline uses an online private project runner
 - confirm the pipeline passes
 
 ## 10. Remaining work / open tasks
@@ -336,7 +411,7 @@ These are the main things still left to improve or finish.
    - confirm he can clone, push, and run pipelines
 
 4. **Runner resilience**
-   - avoid depending on only one machine for the `macos` runner
+   - avoid depending on only one machine for the private runner
    - ideally add a second runner or decide whether to re-enable shared runners later
 
 ### Medium-priority product improvements
@@ -388,7 +463,7 @@ Then check `backend/.env` and make sure `GITLAB_TOKEN` is present.
 
 ### D. Runner availability
 If pipelines stop moving:
-- check whether a `macos` runner is online
+- check whether any private project runner is online
 - check whether Vayu’s or Rutvik’s machine running the project runner is awake and connected
 
 ## 12. Recommended next execution order
