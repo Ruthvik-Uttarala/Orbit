@@ -54,6 +54,42 @@ export interface ProgressStep {
   duration?: number;
 }
 
+export type DeploymentStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type DeploymentExecutionStatus = 'running' | 'success' | 'failed';
+export type DeploymentStepName =
+  | 'Validate request'
+  | 'Trigger CI/CD'
+  | 'Verify release'
+  | 'Report outcome';
+
+export interface DeploymentStepEvent {
+  deploymentId: string;
+  step: DeploymentStepName;
+  status: DeploymentStepStatus;
+  message: string;
+  timestamp: number;
+}
+
+export interface DeploymentStepState {
+  name: DeploymentStepName;
+  status: DeploymentStepStatus;
+  message: string;
+  timestamp: number;
+}
+
+export interface DeploymentStatusSnapshot {
+  status: DeploymentExecutionStatus;
+  progress: number;
+  steps: DeploymentStepState[];
+  result?: {
+    message?: string;
+    deploymentUrl?: string;
+    pipelineUrl?: string;
+    pipelineStatus?: string;
+    completedAt?: string;
+  };
+}
+
 // Flow execution
 export interface FlowExecution {
   id: string;

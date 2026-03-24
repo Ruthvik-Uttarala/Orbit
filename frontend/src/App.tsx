@@ -5,7 +5,13 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './index.css';
-import orbitApi, { FlowExecution, ChatMessage, OrbitStatus, OrbitActivity } from './services/api';
+import orbitApi, {
+  FlowExecution,
+  ChatMessage,
+  OrbitStatus,
+  OrbitActivity,
+  DeployStatusResponse
+} from './services/api';
 
 // Generate a session ID for chat
 const SESSION_ID = `session-${Date.now()}`;
@@ -29,6 +35,8 @@ function App() {
   // Quick action state
   const [quickAction, setQuickAction] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [quickActionMessage, setQuickActionMessage] = useState('');
+  const [activeDeploymentId, setActiveDeploymentId] = useState<string | null>(null);
+  const [deployStatus, setDeployStatus] = useState<DeployStatusResponse | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +64,7 @@ function App() {
 
   // Poll execution status when running
   useEffect(() => {
-    if (!currentExecutionId) return;
+    if (!currentExecutionId || activeDeploymentId === currentExecutionId) return;
 
     const interval = setInterval(async () => {
       try {
@@ -89,7 +97,64 @@ function App() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [currentExecutionId, getDisplayExecutionStatus]);
+  }, [currentExecutionId, activeDeploymentId, getDisplayExecutionStatus]);
+
+  // Poll deploy status every second for real-time deployment UX
+  useEffect(() => {
+    if (!activeDeploymentId) return;
+
+    let isMounted = true;
+
+    const pollDeploymentStatus = async () => {
+      try {
+        const status = await orbitApi.getDeployStatus(activeDeploymentId);
+        if (!isMounted) return;
+
+        setDeployStatus(status);
+
+        const runningStep = status.steps.find(step => step.status === 'running');
+        const failedStep = status.steps.find(step => step.status === 'failed');
+
+        if (status.status === 'running') {
+          setQuickAction('loading');
+          setQuickActionMessage(runningStep?.message || 'Deployment in progress...');
+          return;
+        }
+
+        if (status.status === 'success') {
+          setQuickAction('success');
+          setQuickActionMessage(status.result?.message || 'Deployment successful 🚀');
+          setActiveDeploymentId(null);
+          loadActivities();
+          loadOrbitStatus();
+          return;
+        }
+
+        setQuickAction('error');
+        setQuickActionMessage(
+          failedStep?.message
+          || status.result?.message
+          || 'Deployment failed'
+        );
+        setActiveDeploymentId(null);
+        loadActivities();
+        loadOrbitStatus();
+      } catch (error: any) {
+        if (!isMounted) return;
+        setQuickAction('error');
+        setQuickActionMessage(error.response?.data?.error || error.message || 'Failed to read deployment status');
+        setActiveDeploymentId(null);
+      }
+    };
+
+    pollDeploymentStatus();
+    const interval = setInterval(pollDeploymentStatus, 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeDeploymentId]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -194,13 +259,18 @@ function App() {
 
   // Quick action handlers - using new orbit API endpoints
   const handleDeploy = useCallback(async () => {
+    setActiveDeploymentId(null);
     setQuickAction('loading');
     setQuickActionMessage('Starting deployment...');
+    setDeployStatus(null);
     
     try {
-      const response = await orbitApi.orbitDeploy({ environment: 'staging' });
-      if (response.executionId) {
-        setCurrentExecutionId(response.executionId);
+      const response = await orbitApi.deploy({ environment: 'staging' });
+      const deploymentId = response.deploymentId || response.executionId;
+
+      if (deploymentId) {
+        setCurrentExecutionId(deploymentId);
+        setActiveDeploymentId(deploymentId);
         setQuickActionMessage('Deployment in progress...');
       }
     } catch (error: any) {
@@ -210,6 +280,8 @@ function App() {
   }, []);
 
   const handleBuild = useCallback(async () => {
+    setActiveDeploymentId(null);
+    setDeployStatus(null);
     setQuickAction('loading');
     setQuickActionMessage('Building your app...');
     
@@ -226,6 +298,8 @@ function App() {
   }, []);
 
   const handleFix = useCallback(async () => {
+    setActiveDeploymentId(null);
+    setDeployStatus(null);
     setQuickAction('loading');
     setQuickActionMessage('Analyzing and fixing issues...');
     
@@ -242,6 +316,8 @@ function App() {
   }, []);
 
   const handleTest = useCallback(async () => {
+    setActiveDeploymentId(null);
+    setDeployStatus(null);
     setQuickAction('loading');
     setQuickActionMessage('Running tests...');
     
@@ -271,6 +347,19 @@ function App() {
         return '○';
       default:
         return '○';
+    }
+  };
+
+  const getDeployStepIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return '✓';
+      case 'running':
+        return '...';
+      case 'failed':
+        return 'x';
+      default:
+        return 'o';
     }
   };
 
@@ -388,6 +477,14 @@ function App() {
 
   const pipeline = execution?.latestPipeline || execution?.result?.latestPipeline;
   const executionDisplayStatus = getDisplayExecutionStatus(execution);
+  const deployRunningStep = deployStatus?.steps.find(step => step.status === 'running');
+  const deployFailedStep = deployStatus?.steps.find(step => step.status === 'failed');
+  const deploySummaryMessage =
+    deployStatus?.status === 'success'
+      ? (deployStatus.result?.message || 'Deployment successful 🚀')
+      : deployStatus?.status === 'failed'
+        ? (deployFailedStep?.message || deployStatus.result?.message || 'Deployment failed')
+        : (deployRunningStep?.message || quickActionMessage || 'Deployment in progress...');
 
   return (
     <div className="app">
@@ -472,7 +569,43 @@ function App() {
                   Run Tests
                 </button>
               </div>
-              {quickActionMessage && (
+              {deployStatus && (
+                <div className="deploy-live-status">
+                  <div className="deploy-live-header">
+                    <span className={`deploy-live-state ${deployStatus.status}`}>
+                      {deployStatus.status === 'success' ? 'Deployment successful 🚀' : deployStatus.status === 'failed' ? 'Deployment failed' : 'Deployment in progress'}
+                    </span>
+                    <span className="deploy-live-progress">{deployStatus.progress}%</span>
+                  </div>
+                  <div className="deploy-progress-track">
+                    <div
+                      className={`deploy-progress-fill ${deployStatus.status}`}
+                      style={{ width: `${deployStatus.progress}%` }}
+                    />
+                  </div>
+                  <div className="deploy-live-message">{deploySummaryMessage}</div>
+                  <div className="deploy-live-steps">
+                    {deployStatus.steps.map((step) => (
+                      <div key={step.name} className={`deploy-live-step ${step.status}`}>
+                        <span className="deploy-step-icon">{getDeployStepIcon(step.status)}</span>
+                        <span className="deploy-step-name">{step.name}</span>
+                        <span className="deploy-step-time">{new Date(step.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {deployStatus.status === 'success' && deployStatus.result?.deploymentUrl && (
+                    <a
+                      className="deploy-live-link"
+                      href={deployStatus.result.deploymentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      🌍 {deployStatus.result.deploymentUrl}
+                    </a>
+                  )}
+                </div>
+              )}
+              {!deployStatus && quickActionMessage && (
                 <div className={`quick-status ${quickAction}`}>
                   {quickAction === 'loading' && <span className="spinner"></span>}
                   {quickAction === 'success' && '✓'}

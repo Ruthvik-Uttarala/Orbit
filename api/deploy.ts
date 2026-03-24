@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Import orchestrator and types - using require for serverless compatibility
 const orchestratorModule = require('../backend/src/services/orchestrator');
 const types = require('../backend/src/services/types');
+const trackerModule = require('../backend/src/services/deployment-tracker');
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method } = req;
@@ -17,6 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { environment, version, branch, parameters } = req.body;
     
     const executionId = uuidv4();
+    trackerModule.deploymentTracker.initializeDeployment(executionId);
     
     console.log(`[Deploy] Deployment requested: ${executionId}`, {
       environment,
@@ -44,7 +46,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timestamp: new Date().toISOString()
     };
     
-    res.status(202).json(response);
+    res.status(202).json({
+      ...response,
+      deploymentId: executionId
+    });
   } 
   // GET /api/deploy/status/:id - Get deployment status
   else if (method === 'GET') {
@@ -54,26 +59,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (statusIndex !== -1 && pathParts[statusIndex + 1]) {
       const executionId = pathParts[statusIndex + 1];
       
-      const execution = orchestratorModule.flowOrchestrator.getExecution(executionId);
+      const execution = await orchestratorModule.flowOrchestrator.getExecution(executionId);
+      const deploymentStatus = trackerModule.deploymentTracker.getDeploymentStatus(executionId, execution);
       
-      if (!execution) {
+      if (!execution || !deploymentStatus) {
         res.status(404).json({ error: 'Deployment not found' });
         return;
       }
-      
-      const displayLogs = execution.logs.map((log: any) => {
-        if (typeof log === 'string') return log;
-        return log.message;
-      });
-      
+
       res.json({
-        executionId,
-        status: execution.status,
-        progress: execution.progress,
-        logs: displayLogs,
-        startTime: execution.startTime,
-        endTime: execution.endTime,
-        error: execution.error
+        deploymentId: executionId,
+        status: deploymentStatus.status,
+        progress: deploymentStatus.progress,
+        steps: deploymentStatus.steps.map((step: any) => ({
+          name: step.name,
+          status: step.status,
+          message: step.message,
+          timestamp: step.timestamp
+        })),
+        result: deploymentStatus.result
       });
     } else {
       res.status(400).json({ error: 'Missing deployment ID' });
@@ -87,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (cancelIndex !== -1 && pathParts[cancelIndex + 1]) {
       const executionId = pathParts[cancelIndex + 1];
       
-      const execution = orchestratorModule.flowOrchestrator.getExecution(executionId);
+      const execution = await orchestratorModule.flowOrchestrator.getExecution(executionId);
       
       if (!execution) {
         res.status(404).json({ error: 'Deployment not found' });

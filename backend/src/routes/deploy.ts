@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { DeployRequest, DeployResponse, FlowStatus } from '../services/types';
 import { flowOrchestrator } from '../services/orchestrator';
+import { deploymentTracker } from '../services/deployment-tracker';
 
 export const deployRouter = Router();
 
@@ -14,9 +15,10 @@ export const deployRouter = Router();
 deployRouter.post('/', async (req: Request, res: Response) => {
   const { environment, version, branch, parameters } = req.body as DeployRequest;
   
-  const executionId = uuidv4();
+  const deploymentId = uuidv4();
+  deploymentTracker.initializeDeployment(deploymentId);
   
-  console.log(`[Deploy] Deployment requested: ${executionId}`, {
+  console.log(`[Deploy] Deployment requested: ${deploymentId}`, {
     environment,
     version,
     branch,
@@ -24,25 +26,28 @@ deployRouter.post('/', async (req: Request, res: Response) => {
   });
   
   // Start deployment asynchronously
-  flowOrchestrator.executeFlow(executionId, 'deploy-flow', {
+  flowOrchestrator.executeFlow(deploymentId, 'deploy-flow', {
     environment: environment || 'staging',
     version: version || 'latest',
     branch: branch || 'main',
     ...parameters
   }).then(result => {
-    console.log(`[Deploy] Deployment ${executionId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
+    console.log(`[Deploy] Deployment ${deploymentId} completed:`, result.success ? 'SUCCESS' : 'FAILED');
   }).catch(error => {
-    console.error(`[Deploy] Deployment ${executionId} error:`, error);
+    console.error(`[Deploy] Deployment ${deploymentId} error:`, error);
   });
   
   const response: DeployResponse = {
-    executionId,
+    executionId: deploymentId,
     status: FlowStatus.PENDING,
     message: `Deployment to ${environment || 'staging'} initiated`,
     timestamp: new Date().toISOString()
   };
   
-  res.status(202).json(response);
+  res.status(202).json({
+    ...response,
+    deploymentId
+  });
 });
 
 // Get deployment status
@@ -50,28 +55,25 @@ deployRouter.get('/status/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   const execution = await flowOrchestrator.getExecution(id);
-  
-  if (!execution) {
+
+  const deploymentStatus = deploymentTracker.getDeploymentStatus(id, execution);
+
+  if (!execution || !deploymentStatus) {
     res.status(404).json({ error: 'Deployment not found' });
     return;
   }
-  
-  const displayLogs = execution.logs.map(log => {
-    if (typeof log === 'string') return log;
-    return log.message;
-  });
-  
+
   res.json({
-    executionId: id,
-    status: execution.status,
-    progress: execution.progress,
-    logs: displayLogs,
-    startTime: execution.startTime,
-    endTime: execution.endTime,
-    error: execution.error,
-    result: execution.result,
-    latestPipeline: execution.latestPipeline,
-    pipelines: execution.pipelines
+    deploymentId: id,
+    status: deploymentStatus.status,
+    progress: deploymentStatus.progress,
+    steps: deploymentStatus.steps.map(step => ({
+      name: step.name,
+      status: step.status,
+      message: step.message,
+      timestamp: step.timestamp
+    })),
+    result: deploymentStatus.result
   });
 });
 

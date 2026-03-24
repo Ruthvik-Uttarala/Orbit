@@ -79,9 +79,34 @@ export interface DeployRequest {
 
 export interface DeployResponse {
   executionId: string;
+  deploymentId?: string;
   status: string;
   message: string;
   timestamp: string;
+}
+
+export type DeployStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type DeployExecutionStatus = 'running' | 'success' | 'failed';
+
+export interface DeployStatusStep {
+  name: 'Validate request' | 'Trigger CI/CD' | 'Verify release' | 'Report outcome';
+  status: DeployStepStatus;
+  message: string;
+  timestamp: number;
+}
+
+export interface DeployStatusResponse {
+  deploymentId: string;
+  status: DeployExecutionStatus;
+  progress: number;
+  steps: DeployStatusStep[];
+  result?: {
+    message?: string;
+    deploymentUrl?: string;
+    pipelineUrl?: string;
+    pipelineStatus?: string;
+    completedAt?: string;
+  };
 }
 
 export interface IntentResponse {
@@ -267,8 +292,8 @@ export const orbitApi = {
     return response.data;
   },
 
-  getDeployStatus: async (executionId: string): Promise<FlowExecution> => {
-    const response = await api.get(`/deploy/status/${executionId}`);
+  getDeployStatus: async (deploymentId: string): Promise<DeployStatusResponse> => {
+    const response = await api.get(`/deploy/status/${deploymentId}`);
     return response.data;
   },
 

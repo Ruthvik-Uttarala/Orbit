@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { DeployRequest, DeployResponse, FlowStatus } from '../services/types';
 import { flowOrchestrator } from '../services/orchestrator';
+import { deploymentTracker } from '../services/deployment-tracker';
 import { gitlabAdapter } from '../services/gitlab-adapter';
 import { getAgentDefinitions } from '../agents';
 
@@ -166,6 +167,7 @@ orbitRouter.post('/deploy', async (req: Request, res: Response) => {
   
   const executionId = uuidv4();
   const targetEnv = environment || 'staging';
+  deploymentTracker.initializeDeployment(executionId);
   
   console.log(`[Orbit] Deployment requested: ${executionId}`, {
     environment: targetEnv,

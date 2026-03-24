@@ -338,6 +338,140 @@ code {
   background: var(--orbit-status-error-bg);
 }
 
+.deploy-live-status {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--orbit-radius-md);
+  border: 1px solid var(--orbit-border);
+  background: var(--orbit-bg-tertiary);
+  text-align: left;
+}
+
+.deploy-live-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.deploy-live-state {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--orbit-text-primary);
+}
+
+.deploy-live-state.success {
+  color: var(--orbit-status-success);
+}
+
+.deploy-live-state.failed {
+  color: var(--orbit-status-error);
+}
+
+.deploy-live-state.running {
+  color: var(--orbit-status-info);
+}
+
+.deploy-live-progress {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orbit-text-secondary);
+}
+
+.deploy-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #E2E8F0;
+  overflow: hidden;
+}
+
+.deploy-progress-fill {
+  height: 100%;
+  width: 0;
+  transition: width 0.3s ease-in-out;
+  background: var(--orbit-status-info);
+}
+
+.deploy-progress-fill.success {
+  background: var(--orbit-status-success);
+}
+
+.deploy-progress-fill.failed {
+  background: var(--orbit-status-error);
+}
+
+.deploy-live-message {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--orbit-text-secondary);
+}
+
+.deploy-live-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.deploy-live-step {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--orbit-radius-md);
+  background: var(--orbit-bg-secondary);
+  border: 1px solid var(--orbit-border);
+}
+
+.deploy-live-step.pending {
+  opacity: 0.8;
+}
+
+.deploy-live-step.running {
+  border-color: var(--orbit-status-info);
+}
+
+.deploy-live-step.completed {
+  border-color: var(--orbit-status-success);
+}
+
+.deploy-live-step.failed {
+  border-color: var(--orbit-status-error);
+  background: var(--orbit-status-error-bg);
+}
+
+.deploy-step-icon {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--orbit-text-secondary);
+}
+
+.deploy-step-name {
+  font-size: 13px;
+  color: var(--orbit-text-primary);
+  text-align: left;
+}
+
+.deploy-step-time {
+  font-size: 11px;
+  color: var(--orbit-text-tertiary);
+}
+
+.deploy-live-link {
+  display: inline-flex;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--orbit-accent-primary);
+  text-decoration: none;
+}
+
+.deploy-live-link:hover {
+  text-decoration: underline;
+}
+
 /* Project Status */
 .status-grid {
   display: grid;
