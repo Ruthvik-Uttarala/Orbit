@@ -41,6 +41,7 @@ exports.flowOrchestrator = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const yaml = __importStar(require("js-yaml"));
+const events_1 = require("events");
 const types_1 = require("./types");
 const gitlab_adapter_1 = require("./gitlab-adapter");
 const agents_1 = require("../agents");
@@ -48,6 +49,82 @@ const debug_agent_1 = require("../agents/debug-agent");
 class FlowOrchestrator {
     constructor() {
         this.executions = new Map();
+        this.deploymentEvents = new events_1.EventEmitter();
+        this.deployStepOrder = [
+            'Validate request',
+            'Trigger CI/CD',
+            'Verify release',
+            'Report outcome'
+        ];
+    }
+    onDeploymentEvent(listener) {
+        this.deploymentEvents.on('step', listener);
+        return () => this.deploymentEvents.off('step', listener);
+    }
+    isDeploymentFlow(execution) {
+        return execution.flowName === 'deploy-flow';
+    }
+    emitDeploymentStep(executionId, step, status, message) {
+        const event = {
+            deploymentId: executionId,
+            step,
+            status,
+            message,
+            timestamp: Date.now()
+        };
+        this.deploymentEvents.emit('step', event);
+    }
+    initializeDeploymentTracking(execution) {
+        if (!this.isDeploymentFlow(execution)) {
+            return;
+        }
+        for (const step of this.deployStepOrder) {
+            this.emitDeploymentStep(execution.id, step, 'pending', `${step} is pending`);
+        }
+    }
+    mapStageToDeploymentStep(stageName) {
+        const normalized = stageName.toLowerCase();
+        if (normalized.includes('validate')) {
+            return 'Validate request';
+        }
+        if (normalized.includes('verify')
+            || normalized.includes('test')
+            || normalized.includes('smoke')
+            || normalized.includes('integration')) {
+            return 'Verify release';
+        }
+        if (normalized.includes('complete')
+            || normalized.includes('final')
+            || normalized.includes('report')
+            || normalized.includes('notify')
+            || normalized.includes('status')) {
+            return 'Report outcome';
+        }
+        return 'Trigger CI/CD';
+    }
+    emitDeploymentStageUpdate(execution, stageName, status, message) {
+        if (!this.isDeploymentFlow(execution)) {
+            return;
+        }
+        const step = this.mapStageToDeploymentStep(stageName);
+        const normalizedStage = stageName.toLowerCase();
+        // "prepare" is part of CI/CD setup; keep Trigger CI/CD running until deploy starts/finishes.
+        if (step === 'Trigger CI/CD' && status === 'completed' && normalizedStage.includes('prepare')) {
+            return;
+        }
+        this.emitDeploymentStep(execution.id, step, status, message);
+    }
+    emitDeploymentFinalStatus(execution, success, message) {
+        if (!this.isDeploymentFlow(execution)) {
+            return;
+        }
+        if (success) {
+            this.emitDeploymentStep(execution.id, 'Verify release', 'completed', 'Release verified successfully');
+            this.emitDeploymentStep(execution.id, 'Report outcome', 'running', 'Preparing deployment summary');
+            this.emitDeploymentStep(execution.id, 'Report outcome', 'completed', message);
+            return;
+        }
+        this.emitDeploymentStep(execution.id, 'Report outcome', 'failed', message);
     }
     isPipelineActive(status) {
         return status === 'created' || status === 'pending' || status === 'running';
@@ -114,6 +191,7 @@ class FlowOrchestrator {
             if (this.isPipelineActive(latestPipeline.status)) {
                 execution.status = types_1.FlowStatus.RUNNING;
                 execution.result = this.createRunningPipelineResult(execution);
+                this.emitDeploymentStep(execution.id, 'Trigger CI/CD', 'running', `CI/CD pipeline is ${latestPipeline.status}`);
                 return execution;
             }
             execution.endTime = new Date().toISOString();
@@ -132,6 +210,8 @@ class FlowOrchestrator {
                     latestPipeline: execution.latestPipeline,
                     pipelines: execution.pipelines
                 };
+                this.emitDeploymentStep(execution.id, 'Trigger CI/CD', 'completed', userMessage);
+                this.emitDeploymentFinalStatus(execution, true, userMessage);
                 return execution;
             }
             execution.status = types_1.FlowStatus.FAILED;
@@ -149,6 +229,8 @@ class FlowOrchestrator {
                 latestPipeline: execution.latestPipeline,
                 pipelines: execution.pipelines
             };
+            this.emitDeploymentStep(execution.id, 'Trigger CI/CD', 'failed', userMessage);
+            this.emitDeploymentFinalStatus(execution, false, userMessage);
         }
         catch (error) {
             execution.logs.push(this.createLog(`Failed to refresh pipeline ${execution.latestPipeline.id}: ${error.message}`, 'warn', 'cicd-agent'));
@@ -236,6 +318,7 @@ class FlowOrchestrator {
             retryCount: 0
         };
         this.executions.set(executionId, execution);
+        this.initializeDeploymentTracking(execution);
         try {
             // Load flow definition
             const flowDef = await this.loadFlowDefinition(flowName);
@@ -276,6 +359,7 @@ class FlowOrchestrator {
                 };
                 execution.progress.push(step);
                 execution.logs.push(this.createLog(`Starting stage: ${stage.name}`, 'info', stage.agent));
+                this.emitDeploymentStageUpdate(execution, stage.name, 'running', `${stage.name} is running`);
                 try {
                     await this.executeStage(stage, parameters, execution);
                     if (this.hasActivePipeline(execution)) {
@@ -283,22 +367,26 @@ class FlowOrchestrator {
                         step.message = execution.result?.output?.userMessage || 'Waiting for GitLab pipeline';
                         execution.status = types_1.FlowStatus.RUNNING;
                         execution.result = this.createRunningPipelineResult(execution);
+                        this.emitDeploymentStageUpdate(execution, stage.name, 'running', step.message || 'Waiting for GitLab pipeline');
                         return execution.result;
                     }
                     step.status = 'completed';
                     step.duration = Date.now() - new Date(step.timestamp).getTime();
                     execution.logs.push(this.createLog(`Completed stage: ${stage.name}`, 'info', stage.agent));
+                    this.emitDeploymentStageUpdate(execution, stage.name, 'completed', `${stage.name} completed`);
                 }
                 catch (error) {
                     step.status = 'failed';
                     step.message = error.message;
                     execution.logs.push(this.createLog(`Failed stage: ${stage.name} - ${error.message}`, 'error', stage.agent));
+                    this.emitDeploymentStageUpdate(execution, stage.name, 'failed', error.message);
                     // Self-healing: try to recover
                     const recovered = await this.attemptRecovery(execution, stage, error, parameters);
                     if (recovered) {
                         step.status = 'completed';
                         step.message = 'Recovered after self-healing';
                         execution.logs.push(this.createLog(`Stage ${stage.name} recovered via self-healing`, 'info', 'debug-agent'));
+                        this.emitDeploymentStageUpdate(execution, stage.name, 'completed', 'Recovered after self-healing');
                     }
                     else {
                         throw error;
@@ -318,6 +406,7 @@ class FlowOrchestrator {
                 latestPipeline: execution.latestPipeline,
                 pipelines: execution.pipelines
             };
+            this.emitDeploymentFinalStatus(execution, true, execution.result.userMessage || 'Deployment completed successfully');
             return execution.result;
         }
         catch (error) {
@@ -333,6 +422,7 @@ class FlowOrchestrator {
                 latestPipeline: execution.latestPipeline,
                 pipelines: execution.pipelines
             };
+            this.emitDeploymentFinalStatus(execution, false, execution.result.userMessage || error.message);
             return execution.result;
         }
     }
@@ -461,6 +551,7 @@ class FlowOrchestrator {
             };
             execution.progress.push(step);
             execution.logs.push(this.createLog(`Starting: ${stageDef.name}`, 'info', stageDef.agent));
+            this.emitDeploymentStageUpdate(execution, stageDef.name, 'running', `${stageDef.name} is running`);
             try {
                 const agent = (0, agents_1.getAgent)(stageDef.agent);
                 if (!agent) {
@@ -484,22 +575,26 @@ class FlowOrchestrator {
                     step.message = result.output?.userMessage || 'Waiting for GitLab pipeline';
                     execution.status = types_1.FlowStatus.RUNNING;
                     execution.result = this.createRunningPipelineResult(execution);
+                    this.emitDeploymentStageUpdate(execution, stageDef.name, 'running', step.message || 'Waiting for GitLab pipeline');
                     return execution.result;
                 }
                 step.status = 'completed';
                 step.duration = Date.now() - new Date(step.timestamp).getTime();
                 step.message = result.output?.userMessage || `${stageDef.name} completed`;
                 execution.logs.push(this.createLog(`Completed: ${stageDef.name}`, 'info', stageDef.agent));
+                this.emitDeploymentStageUpdate(execution, stageDef.name, 'completed', step.message || `${stageDef.name} completed`);
             }
             catch (error) {
                 step.status = 'failed';
                 step.message = error.message;
                 execution.logs.push(this.createLog(`Failed: ${stageDef.name} - ${error.message}`, 'error', stageDef.agent));
+                this.emitDeploymentStageUpdate(execution, stageDef.name, 'failed', error.message);
                 // Attempt self-healing
                 const recovered = await this.attemptRecovery(execution, stageDef, error, params);
                 if (recovered) {
                     step.status = 'completed';
                     step.message = 'Recovered via self-healing';
+                    this.emitDeploymentStageUpdate(execution, stageDef.name, 'completed', 'Recovered via self-healing');
                 }
                 else {
                     execution.status = types_1.FlowStatus.FAILED;
@@ -513,6 +608,7 @@ class FlowOrchestrator {
                         latestPipeline: execution.latestPipeline,
                         pipelines: execution.pipelines
                     };
+                    this.emitDeploymentFinalStatus(execution, false, execution.result.userMessage || error.message);
                     return {
                         success: false,
                         message: error.message,
@@ -534,6 +630,7 @@ class FlowOrchestrator {
             latestPipeline: execution.latestPipeline,
             pipelines: execution.pipelines
         };
+        this.emitDeploymentFinalStatus(execution, true, execution.result.userMessage || 'Deployment completed successfully');
         return execution.result;
     }
     /**

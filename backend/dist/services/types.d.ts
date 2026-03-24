@@ -40,6 +40,34 @@ export interface ProgressStep {
     timestamp: string;
     duration?: number;
 }
+export type DeploymentStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type DeploymentExecutionStatus = 'running' | 'success' | 'failed';
+export type DeploymentStepName = 'Validate request' | 'Trigger CI/CD' | 'Verify release' | 'Report outcome';
+export interface DeploymentStepEvent {
+    deploymentId: string;
+    step: DeploymentStepName;
+    status: DeploymentStepStatus;
+    message: string;
+    timestamp: number;
+}
+export interface DeploymentStepState {
+    name: DeploymentStepName;
+    status: DeploymentStepStatus;
+    message: string;
+    timestamp: number;
+}
+export interface DeploymentStatusSnapshot {
+    status: DeploymentExecutionStatus;
+    progress: number;
+    steps: DeploymentStepState[];
+    result?: {
+        message?: string;
+        deploymentUrl?: string;
+        pipelineUrl?: string;
+        pipelineStatus?: string;
+        completedAt?: string;
+    };
+}
 export interface FlowExecution {
     id: string;
     flowName: string;
@@ -88,6 +116,7 @@ export interface DeployRequest {
     version?: string;
     branch?: string;
     parameters?: Record<string, any>;
+    waitForCompletion?: boolean;
 }
 export interface DeployResponse {
     executionId: string;

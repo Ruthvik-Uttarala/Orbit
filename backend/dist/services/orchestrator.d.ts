@@ -1,6 +1,15 @@
-import { FlowExecution, FlowResult } from './types';
+import { FlowExecution, FlowResult, DeploymentStepEvent } from './types';
 declare class FlowOrchestrator {
     private executions;
+    private deploymentEvents;
+    private readonly deployStepOrder;
+    onDeploymentEvent(listener: (event: DeploymentStepEvent) => void): () => void;
+    private isDeploymentFlow;
+    private emitDeploymentStep;
+    private initializeDeploymentTracking;
+    private mapStageToDeploymentStep;
+    private emitDeploymentStageUpdate;
+    private emitDeploymentFinalStatus;
     private isPipelineActive;
     private upsertPipelineSummary;
     private finalizeRunningStep;

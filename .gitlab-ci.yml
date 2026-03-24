@@ -9,12 +9,12 @@ stages:
 
 variables:
   DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
-  NODE_VERSION: "18"
+  NODE_VERSION: "20"
   NPM_FLAGS: "--prefer-offline --no-audit"
 
 # Default configuration for all jobs
 default:
-  image: node:18
+  image: node:20
   interruptible: true
 
 .backend-node:
@@ -111,26 +111,34 @@ test:integration:
 # Stage 4: Deployment
 deploy:staging:
   stage: deploy
+  image: node:20
   script:
     - echo "=== Deploying to Staging ==="
-    - echo "Staging deployment initiated"
-    - npm run deploy:staging
+    - npm install --global vercel@latest
+    - cd frontend
+    - vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+    - vercel build --token="$VERCEL_TOKEN"
+    - url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN"); echo "VERCEL_DEPLOYMENT_URL=$url"
   environment:
     name: staging
-    url: https://staging.orbit-devops.example.com
+    url: https://staging.orbit-devops.vercel.app
   only:
     - develop
   when: manual
 
 deploy:production:
   stage: deploy
+  image: node:20
   script:
     - echo "=== Deploying to Production ==="
-    - echo "Production deployment initiated"
-    - npm run deploy:production
+    - npm install --global vercel@latest
+    - cd frontend
+    - vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+    - vercel build --prod --token="$VERCEL_TOKEN"
+    - url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"); echo "VERCEL_DEPLOYMENT_URL=$url"
   environment:
     name: production
-    url: https://orbit-devops.example.com
+    url: https://orbit-devops.vercel.app
   only:
     - main
   when: manual

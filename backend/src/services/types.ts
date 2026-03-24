@@ -147,6 +147,7 @@ export interface DeployRequest {
   version?: string;
   branch?: string;
   parameters?: Record<string, any>;
+  waitForCompletion?: boolean;
 }
 
 // Deploy response

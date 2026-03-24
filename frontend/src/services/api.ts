@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -75,6 +75,7 @@ export interface DeployRequest {
   version?: string;
   branch?: string;
   parameters?: Record<string, any>;
+  waitForCompletion?: boolean;
 }
 
 export interface DeployResponse {
@@ -107,6 +108,14 @@ export interface DeployStatusResponse {
     pipelineStatus?: string;
     completedAt?: string;
   };
+}
+
+export interface DeploymentHistoryItem {
+  id: string;
+  user_id: string;
+  url: string | null;
+  status: string;
+  created_at: string;
 }
 
 export interface IntentResponse {
@@ -287,13 +296,24 @@ export const orbitApi = {
   },
 
   // Deploy
-  deploy: async (request: DeployRequest): Promise<DeployResponse> => {
-    const response = await api.post('/deploy', request);
+  deploy: async (request: DeployRequest, accessToken?: string): Promise<DeployResponse & { url?: string; savedDeployment?: DeploymentHistoryItem }> => {
+    const response = await api.post('/deploy', request, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+    });
     return response.data;
   },
 
-  getDeployStatus: async (deploymentId: string): Promise<DeployStatusResponse> => {
-    const response = await api.get(`/deploy/status/${deploymentId}`);
+  getDeployStatus: async (deploymentId: string, accessToken?: string): Promise<DeployStatusResponse> => {
+    const response = await api.get(`/deploy/status/${deploymentId}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+    });
+    return response.data;
+  },
+
+  getDeploymentHistory: async (accessToken: string): Promise<{ deployments: DeploymentHistoryItem[] }> => {
+    const response = await api.get('/deploy/history', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
     return response.data;
   },
 

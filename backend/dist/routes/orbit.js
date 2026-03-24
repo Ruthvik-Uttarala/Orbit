@@ -9,6 +9,7 @@ const express_1 = require("express");
 const uuid_1 = require("uuid");
 const types_1 = require("../services/types");
 const orchestrator_1 = require("../services/orchestrator");
+const deployment_tracker_1 = require("../services/deployment-tracker");
 const gitlab_adapter_1 = require("../services/gitlab-adapter");
 const agents_1 = require("../agents");
 exports.orbitRouter = (0, express_1.Router)();
@@ -143,6 +144,7 @@ exports.orbitRouter.post('/deploy', async (req, res) => {
     const { environment, version, branch, parameters } = req.body;
     const executionId = (0, uuid_1.v4)();
     const targetEnv = environment || 'staging';
+    deployment_tracker_1.deploymentTracker.initializeDeployment(executionId);
     console.log(`[Orbit] Deployment requested: ${executionId}`, {
         environment: targetEnv,
         version,

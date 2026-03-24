@@ -6,11 +6,11 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
     "axios": "^1.6.2",
     "web-vitals": "^3.5.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
@@ -18,15 +18,22 @@
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
-    "typescript": "^4.9.5"
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5",
+    "vite": "^5.4.11"
   },
   "scripts": {
-    "start": "node ./node_modules/react-scripts/bin/react-scripts.js start",
-    "build": "node ./node_modules/react-scripts/bin/react-scripts.js build",
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "node ./node_modules/react-scripts/bin/react-scripts.js test",
     "test:coverage": "node ./node_modules/react-scripts/bin/react-scripts.js test --coverage --watchAll=false",
     "eject": "node ./node_modules/react-scripts/bin/react-scripts.js eject",
     "lint": "node ./node_modules/eslint/bin/eslint.js src --ext .ts,.tsx"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "eslintConfig": {
     "extends": [
@@ -45,6 +52,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "proxy": "http://localhost:3001"
+  }
 }
